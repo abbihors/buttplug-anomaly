@@ -1,0 +1,8 @@
+-- TODO: register callback
+function on_game_start()
+	RegisterScriptCallback("on_game_load", start_buttplug)
+end
+
+function start_buttplug()
+    -- TODO: impl
+end
