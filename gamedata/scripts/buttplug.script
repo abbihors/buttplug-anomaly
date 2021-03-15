@@ -1,0 +1,45 @@
+local bone_strings = {}
+
+-- TODO see if we can get more bone_stringses
+bone_strings[19] = "head"
+bone_strings[17] = "head"
+bone_strings[16] = "head"
+bone_strings[15] = "head"
+bone_strings[14] = "head"
+bone_strings[13] = "torso"
+bone_strings[12] = "torso"
+bone_strings[11] = "torso"
+bone_strings[2] = "torso"
+bone_strings[20] = "leftarm"
+bone_strings[21] = "leftarm"
+bone_strings[22] = "leftarm"
+bone_strings[23] = "leftarm"
+bone_strings[33] = "rightarm"
+bone_strings[34] = "rightarm"
+bone_strings[35] = "rightarm"
+bone_strings[36] = "rightarm"
+bone_strings[3] = "leftleg"
+bone_strings[4] = "leftleg"
+bone_strings[7] = "rightleg"
+bone_strings[8] = "rightleg"
+
+local function start_buttplug()
+    -- TODO: impl
+    printf("[buttplug] started")
+end
+
+local function demo_buzz()
+    printf("[buttplug] buzz...")
+end
+
+-- Params: (<game_object>,<number>,<vector>,<game_object>,<number>)
+local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
+    printf("[buttplug] got hit for %s in %s", amount, bone_id)
+end
+
+-- TODO: register callbacks
+function on_game_start()
+	RegisterScriptCallback("on_game_load", start_buttplug)
+    RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
+	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
+end
