@@ -1,11 +1,7 @@
 -- buttplug.lua -- Lua client for buttplug.io
 
--- Have to use absolute paths I think
 local json = require("gamedata\\scripts\\buttplug\\json")
 local pollnet = require("gamedata\\scripts\\buttplug\\pollnet")
-
--- STALKER uses printf
-local print = printf
 
 local buttplug = {}
 
@@ -118,6 +114,7 @@ buttplug.devices = {}
 buttplug.got_server_info = false
 buttplug.got_device_list = false
 buttplug.scanning = false
+buttplug.print = print
 
 --
 --
@@ -131,7 +128,7 @@ local function send(msg)
     buttplug.msg_counter = buttplug.msg_counter + 1
     
     local payload = "[" .. json.encode(msg) .. "]"
-    print("> " .. payload)
+    buttplug.print("> " .. payload)
     buttplug.sock:send(payload)
 end
 
@@ -238,8 +235,7 @@ function buttplug.get_and_handle_message()
     local message = buttplug.sock:last_message()
 
     if message then
-        print("< " .. message)
-
+        buttplug.print("< " .. message)
         buttplug.handle_message(message)
     end
 

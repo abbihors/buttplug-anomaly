@@ -1,5 +1,10 @@
 buttplug = require("gamedata\\scripts\\buttplug\\buttplug")
 
+-- Set buttplug's print function to xray's printf
+buttplug.print = function (arg)
+    return printf("[buttplug] " .. arg)
+end
+
 local bone_strings = {}
 
 -- TODO see if we can get more bone_strings
