@@ -1,6 +1,972 @@
+-- MIT License
+
+-- Copyright (c) 2020 probable-basilisk
+
+-- Permission is hereby granted, free of charge, to any person obtaining a copy
+-- of this software and associated documentation files (the "Software"), to deal
+-- in the Software without restriction, including without limitation the rights
+-- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+-- copies of the Software, and to permit persons to whom the Software is
+-- furnished to do so, subject to the following conditions:
+
+-- The above copyright notice and this permission notice shall be included in all
+-- copies or substantial portions of the Software.
+
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-- SOFTWARE.
+
+--[[ 
+pollnet bindings for luajit
+
+example usage to read twitch chat:
+local pollnet = require("pollnet")
+local async = require("async") -- assuming you have some kind of async
+async.run(function()
+  local url = "wss://irc-ws.chat.twitch.tv:443"
+  local sock = pollnet.open_ws(url)
+  sock:send("PASS doesntmatter")
+  -- special nick for anon read-only access on twitch
+  local anon_user_name = "justinfan" .. math.random(1, 100000)
+  local target_channel = "your_channel_name_here"
+  sock:send("NICK " .. anon_user_name)
+  sock:send("JOIN #" .. target_channel)
+  
+  while sock:poll() do
+    local msg = sock:last_message()
+    if msg then
+      if msg == "PING :tmi.twitch.tv" then
+        sock:send("PONG :tmi.twitch.tv")
+      end
+      print(msg)
+    else
+      async.await_frames(1)
+    end
+  end
+  print("Socket closed: ", sock:last_message())
+end)
+
+-- example http get:
+async.run(function()
+  local sock = pollnet.http_get("https://www.example.com")
+  while sock:poll() do
+    if sock:last_message() then
+      print("HTTP STATUS: ", sock:last_message())
+      break
+    end
+    async.await_frames(1)
+  end
+  while sock:poll() do
+    if sock:last_message() then
+      print("HTTP BODY: ", sock:last_message())
+      break
+    end
+    async.await_frames(1)
+  end
+  sock:close()
+end)
+]]
+
+local ffi = require("ffi")
+ffi.cdef[[
+struct pnctx* pollnet_init();
+struct pnctx* pollnet_get_or_init_static();
+void pollnet_shutdown(struct pnctx* ctx);
+unsigned int pollnet_open_ws(struct pnctx* ctx, const char* url);
+unsigned int pollnet_simple_http_get(struct pnctx* ctx, const char* url);
+unsigned int pollnet_simple_http_post(struct pnctx* ctx, const char* url, const char* content_type, const char* data, unsigned int datasize);
+void pollnet_close(struct pnctx* ctx, unsigned int handle);
+void pollnet_close_all(struct pnctx* ctx);
+void pollnet_send(struct pnctx* ctx, unsigned int handle, const char* msg);
+unsigned int pollnet_update(struct pnctx* ctx, unsigned int handle);
+int pollnet_get(struct pnctx* ctx, unsigned int handle, char* dest, unsigned int dest_size);
+int pollnet_get_error(struct pnctx* ctx, unsigned int handle, char* dest, unsigned int dest_size);
+unsigned int pollnet_get_connected_client_handle(struct pnctx* ctx, unsigned int handle);
+unsigned int pollnet_listen_ws(struct pnctx* ctx, const char* addr);
+unsigned int pollnet_serve_static_http(struct pnctx* ctx, const char* addr, const char* serve_dir);
+unsigned int pollnet_serve_http(struct pnctx* ctx, const char* addr);
+void pollnet_add_virtual_file(struct pnctx* ctx, unsigned int handle, const char* filename, const char* filedata, unsigned int filesize);
+void pollnet_remove_virtual_file(struct pnctx* ctx, unsigned int handle, const char* filename);
+int pollnet_get_nanoid(char* dest, unsigned int dest_size);
+]]
+
+local POLLNET_RESULT_CODES = {
+  [0] = "invalid_handle",
+  [1] = "closed",
+  [2] = "opening",
+  [3] = "nodata",
+  [4] = "hasdata",
+  [5] = "error",
+  [6] = "newclient"
+}
+
+local pollnet = ffi.load("pollnet")
+local _ctx = nil
+
+local function init_ctx()
+  if _ctx then return end
+  _ctx = ffi.gc(pollnet.pollnet_init(), pollnet.pollnet_shutdown)
+  assert(_ctx ~= nil)
+end
+
+local function init_ctx_hack_static()
+  if _ctx then return end
+  _ctx = pollnet.pollnet_get_or_init_static()
+  assert(_ctx ~= nil)
+  pollnet.pollnet_close_all(_ctx)
+end
+
+local function shutdown_ctx()
+  if not _ctx then return end
+  pollnet.pollnet_shutdown(ffi.gc(_ctx, nil))
+  _ctx = nil
+end
+
+local socket_mt = {}
+local function Socket()
+  return setmetatable({}, {__index = socket_mt})
+end
+
+function socket_mt:_open(scratch_size, opener, ...)
+  init_ctx()
+  if self._socket then self:close() end
+  scratch_size = scratch_size or 64000
+  if type(opener) == "number" then
+    self._socket = opener
+  else
+    self._socket = opener(_ctx, ...)
+  end
+  self._scratch = ffi.new("int8_t[?]", scratch_size)
+  self._scratch_size = scratch_size
+  self._status = "unpolled"
+  return self
+end
+
+function socket_mt:http_get(url, scratch_size)
+  return self:_open(scratch_size, pollnet.pollnet_simple_http_get, url)
+end
+
+function socket_mt:http_post(url, body, content_type, scratch_size)
+  body = body or ""
+  content_type = content_type or "application/x-www-form-urlencoded"
+  return self:_open(scratch_size, pollnet.pollnet_simple_http_post, url, content_type, body, #body)
+end
+
+function socket_mt:open_ws(url, scratch_size)
+  return self:_open(scratch_size, pollnet.pollnet_open_ws, url)
+end
+
+function socket_mt:serve_http(addr, dir, scratch_size)
+  self.is_http_server = true
+  if dir and dir ~= "" then
+    return self:_open(scratch_size, pollnet.pollnet_serve_static_http, addr, dir)
+  else
+    return self:_open(scratch_size, pollnet.pollnet_serve_http, addr)
+  end
+end
+
+function socket_mt:add_virtual_file(filename, filedata)
+  assert(filedata)
+  local dsize = #filedata
+  pollnet.pollnet_add_virtual_file(_ctx, self._socket, filename, filedata, dsize)
+end
+
+function socket_mt:remove_virtual_file(filename)
+  pollnet.pollnet_remove_virtual_file(_ctx, self._socket, filename)
+end
+
+function socket_mt:listen_ws(addr, scratch_size)
+  return self:_open(scratch_size, pollnet.pollnet_listen_ws, addr)
+end
+
+function socket_mt:on_connection(f)
+  self._on_connection = f
+  return self
+end
+
+function socket_mt:_get_message()
+  local msg_size = pollnet.pollnet_get(_ctx, self._socket, self._scratch, self._scratch_size)
+  if msg_size > 0 then
+    return ffi.string(self._scratch, msg_size)
+  else
+    return nil
+  end
+end
+
+function socket_mt:poll()
+  if not self._socket then 
+    self._status = "invalid"
+    return false, "invalid"
+  end
+  local res = POLLNET_RESULT_CODES[pollnet.pollnet_update(_ctx, self._socket)] or "error"
+  self._status = res
+  self._last_message = nil
+  if res == "hasdata" then
+    self._status = "open"
+    self._last_message = self:_get_message()
+    return true, self._last_message
+  elseif res == "nodata" then
+    self._status = "open"
+    return true
+  elseif res == "opening" then
+    self._status = "opening"
+    return true
+  elseif res == "error" then
+    self._status = "error"
+    self._last_message = self:error_msg()
+    return false, self._last_message
+  elseif res == "closed" then
+    self._status = "closed"
+    return false, "closed"
+  elseif res == "newclient" then
+    self._status = "open"
+    local client_addr = self:_get_message()
+    local client_handle = pollnet.pollnet_get_connected_client_handle(_ctx, self._socket)
+    assert(client_handle > 0)
+    local client_sock = Socket():_open(self._scratch_size, client_handle)
+    client_sock.parent = self
+    client_sock.remote_addr = client_addr
+    if self._on_connection then
+      self._on_connection(client_sock, client_addr)
+    else
+      printf("No connection handler! All incoming connections will be closed!")
+      client_sock:close()
+    end
+    return true
+  end
+end
+
+function socket_mt:last_message()
+  return self._last_message
+end
+function socket_mt:status()
+  return self._status
+end
+function socket_mt:send(msg)
+  assert(self._socket)
+  pollnet.pollnet_send(_ctx, self._socket, msg)
+end
+function socket_mt:close()
+  assert(self._socket)
+  pollnet.pollnet_close(_ctx, self._socket)
+  self._socket = nil
+end
+function socket_mt:error_msg()
+  if not self._socket then return "No socket!" end
+  local msg_size = pollnet.pollnet_get_error(_ctx, self._socket, self._scratch, self._scratch_size)
+  if msg_size > 0 then
+    local smsg = ffi.string(self._scratch, msg_size)
+    return smsg
+  else
+    return nil
+  end
+end
+
+local function open_ws(url, scratch_size)
+  return Socket():open_ws(url, scratch_size)
+end
+
+local function listen_ws(addr, scratch_size)
+  return Socket():listen_ws(addr, scratch_size)
+end
+
+local function serve_http(addr, dir, scratch_size)
+  return Socket():serve_http(addr, dir, scratch_size)
+end
+
+local function http_get(url, scratch_size)
+  return Socket():http_get(url, scratch_size)
+end
+
+local function http_post(url, body, content_type, scratch_size)
+  return Socket():http_post(url, body, content_type, scratch_size)
+end
+
+local function get_nanoid()
+  local _id_scratch = ffi.new("int8_t[?]", 128)
+  local msg_size = pollnet.pollnet_get_nanoid(_id_scratch, 128)
+  return ffi.string(_id_scratch, msg_size)
+end
+
+local pollnet_lua = {
+  init = init_ctx,
+  init_hack_static = init_ctx_hack_static,
+  shutdown = shutdown_ctx, 
+  open_ws = open_ws, 
+  listen_ws = listen_ws,
+  serve_http = serve_http,
+  http_get = http_get,
+  http_post = http_post,
+  Socket = Socket,
+  pollnet = pollnet,
+  nanoid = get_nanoid,
+}
+
+--
+-- json.lua
+--
+-- Copyright (c) 2020 rxi
+--
+-- Permission is hereby granted, free of charge, to any person obtaining a copy of
+-- this software and associated documentation files (the "Software"), to deal in
+-- the Software without restriction, including without limitation the rights to
+-- use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+-- of the Software, and to permit persons to whom the Software is furnished to do
+-- so, subject to the following conditions:
+--
+-- The above copyright notice and this permission notice shall be included in all
+-- copies or substantial portions of the Software.
+--
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-- SOFTWARE.
+--
+
+local json = { _version = "0.1.2" }
+
+-------------------------------------------------------------------------------
+-- Encode
+-------------------------------------------------------------------------------
+
+local encode
+
+local escape_char_map = {
+  [ "\\" ] = "\\",
+  [ "\"" ] = "\"",
+  [ "\b" ] = "b",
+  [ "\f" ] = "f",
+  [ "\n" ] = "n",
+  [ "\r" ] = "r",
+  [ "\t" ] = "t",
+}
+
+local escape_char_map_inv = { [ "/" ] = "/" }
+for k, v in pairs(escape_char_map) do
+  escape_char_map_inv[v] = k
+end
+
+
+local function escape_char(c)
+  return "\\" .. (escape_char_map[c] or string.format("u%04x", c:byte()))
+end
+
+
+local function encode_nil(val)
+  return "null"
+end
+
+
+local function encode_table(val, stack)
+  local res = {}
+  stack = stack or {}
+
+  -- Circular reference?
+  if stack[val] then error("circular reference") end
+
+  stack[val] = true
+
+  if rawget(val, 1) ~= nil or next(val) == nil then
+    -- Treat as array -- check keys are valid and it is not sparse
+    local n = 0
+    for k in pairs(val) do
+      if type(k) ~= "number" then
+        error("invalid table: mixed or invalid key types")
+      end
+      n = n + 1
+    end
+    if n ~= #val then
+      error("invalid table: sparse array")
+    end
+    -- Encode
+    for i, v in ipairs(val) do
+      table.insert(res, encode(v, stack))
+    end
+    stack[val] = nil
+    return "[" .. table.concat(res, ",") .. "]"
+
+  else
+    -- Treat as an object
+    for k, v in pairs(val) do
+      if type(k) ~= "string" then
+        error("invalid table: mixed or invalid key types")
+      end
+      table.insert(res, encode(k, stack) .. ":" .. encode(v, stack))
+    end
+    stack[val] = nil
+    return "{" .. table.concat(res, ",") .. "}"
+  end
+end
+
+
+local function encode_string(val)
+  return '"' .. val:gsub('[%z\1-\31\\"]', escape_char) .. '"'
+end
+
+
+local function encode_number(val)
+  -- Check for NaN, -inf and inf
+  if val ~= val or val <= -math.huge or val >= math.huge then
+    error("unexpected number value '" .. tostring(val) .. "'")
+  end
+  return string.format("%.14g", val)
+end
+
+
+local type_func_map = {
+  [ "nil"     ] = encode_nil,
+  [ "table"   ] = encode_table,
+  [ "string"  ] = encode_string,
+  [ "number"  ] = encode_number,
+  [ "boolean" ] = tostring,
+}
+
+
+encode = function(val, stack)
+  local t = type(val)
+  local f = type_func_map[t]
+  if f then
+    return f(val, stack)
+  end
+  error("unexpected type '" .. t .. "'")
+end
+
+
+function json.encode(val)
+  return ( encode(val) )
+end
+
+
+-------------------------------------------------------------------------------
+-- Decode
+-------------------------------------------------------------------------------
+
+local parse
+
+local function create_set(...)
+  local res = {}
+  for i = 1, select("#", ...) do
+    res[ select(i, ...) ] = true
+  end
+  return res
+end
+
+local space_chars   = create_set(" ", "\t", "\r", "\n")
+local delim_chars   = create_set(" ", "\t", "\r", "\n", "]", "}", ",")
+local escape_chars  = create_set("\\", "/", '"', "b", "f", "n", "r", "t", "u")
+local literals      = create_set("true", "false", "null")
+
+local literal_map = {
+  [ "true"  ] = true,
+  [ "false" ] = false,
+  [ "null"  ] = nil,
+}
+
+
+local function next_char(str, idx, set, negate)
+  for i = idx, #str do
+    if set[str:sub(i, i)] ~= negate then
+      return i
+    end
+  end
+  return #str + 1
+end
+
+
+local function decode_error(str, idx, msg)
+  local line_count = 1
+  local col_count = 1
+  for i = 1, idx - 1 do
+    col_count = col_count + 1
+    if str:sub(i, i) == "\n" then
+      line_count = line_count + 1
+      col_count = 1
+    end
+  end
+  error( string.format("%s at line %d col %d", msg, line_count, col_count) )
+end
+
+
+local function codepoint_to_utf8(n)
+  -- http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&id=iws-appendixa
+  local f = math.floor
+  if n <= 0x7f then
+    return string.char(n)
+  elseif n <= 0x7ff then
+    return string.char(f(n / 64) + 192, n % 64 + 128)
+  elseif n <= 0xffff then
+    return string.char(f(n / 4096) + 224, f(n % 4096 / 64) + 128, n % 64 + 128)
+  elseif n <= 0x10ffff then
+    return string.char(f(n / 262144) + 240, f(n % 262144 / 4096) + 128,
+                       f(n % 4096 / 64) + 128, n % 64 + 128)
+  end
+  error( string.format("invalid unicode codepoint '%x'", n) )
+end
+
+
+local function parse_unicode_escape(s)
+  local n1 = tonumber( s:sub(1, 4),  16 )
+  local n2 = tonumber( s:sub(7, 10), 16 )
+   -- Surrogate pair?
+  if n2 then
+    return codepoint_to_utf8((n1 - 0xd800) * 0x400 + (n2 - 0xdc00) + 0x10000)
+  else
+    return codepoint_to_utf8(n1)
+  end
+end
+
+
+local function parse_string(str, i)
+  local res = ""
+  local j = i + 1
+  local k = j
+
+  while j <= #str do
+    local x = str:byte(j)
+
+    if x < 32 then
+      decode_error(str, j, "control character in string")
+
+    elseif x == 92 then -- `\`: Escape
+      res = res .. str:sub(k, j - 1)
+      j = j + 1
+      local c = str:sub(j, j)
+      if c == "u" then
+        local hex = str:match("^[dD][89aAbB]%x%x\\u%x%x%x%x", j + 1)
+                 or str:match("^%x%x%x%x", j + 1)
+                 or decode_error(str, j - 1, "invalid unicode escape in string")
+        res = res .. parse_unicode_escape(hex)
+        j = j + #hex
+      else
+        if not escape_chars[c] then
+          decode_error(str, j - 1, "invalid escape char '" .. c .. "' in string")
+        end
+        res = res .. escape_char_map_inv[c]
+      end
+      k = j + 1
+
+    elseif x == 34 then -- `"`: End of string
+      res = res .. str:sub(k, j - 1)
+      return res, j + 1
+    end
+
+    j = j + 1
+  end
+
+  decode_error(str, i, "expected closing quote for string")
+end
+
+
+local function parse_number(str, i)
+  local x = next_char(str, i, delim_chars)
+  local s = str:sub(i, x - 1)
+  local n = tonumber(s)
+  if not n then
+    decode_error(str, i, "invalid number '" .. s .. "'")
+  end
+  return n, x
+end
+
+
+local function parse_literal(str, i)
+  local x = next_char(str, i, delim_chars)
+  local word = str:sub(i, x - 1)
+  if not literals[word] then
+    decode_error(str, i, "invalid literal '" .. word .. "'")
+  end
+  return literal_map[word], x
+end
+
+
+local function parse_array(str, i)
+  local res = {}
+  local n = 1
+  i = i + 1
+  while 1 do
+    local x
+    i = next_char(str, i, space_chars, true)
+    -- Empty / end of array?
+    if str:sub(i, i) == "]" then
+      i = i + 1
+      break
+    end
+    -- Read token
+    x, i = parse(str, i)
+    res[n] = x
+    n = n + 1
+    -- Next token
+    i = next_char(str, i, space_chars, true)
+    local chr = str:sub(i, i)
+    i = i + 1
+    if chr == "]" then break end
+    if chr ~= "," then decode_error(str, i, "expected ']' or ','") end
+  end
+  return res, i
+end
+
+
+local function parse_object(str, i)
+  local res = {}
+  i = i + 1
+  while 1 do
+    local key, val
+    i = next_char(str, i, space_chars, true)
+    -- Empty / end of object?
+    if str:sub(i, i) == "}" then
+      i = i + 1
+      break
+    end
+    -- Read key
+    if str:sub(i, i) ~= '"' then
+      decode_error(str, i, "expected string for key")
+    end
+    key, i = parse(str, i)
+    -- Read ':' delimiter
+    i = next_char(str, i, space_chars, true)
+    if str:sub(i, i) ~= ":" then
+      decode_error(str, i, "expected ':' after key")
+    end
+    i = next_char(str, i + 1, space_chars, true)
+    -- Read value
+    val, i = parse(str, i)
+    -- Set
+    res[key] = val
+    -- Next token
+    i = next_char(str, i, space_chars, true)
+    local chr = str:sub(i, i)
+    i = i + 1
+    if chr == "}" then break end
+    if chr ~= "," then decode_error(str, i, "expected '}' or ','") end
+  end
+  return res, i
+end
+
+
+local char_func_map = {
+  [ '"' ] = parse_string,
+  [ "0" ] = parse_number,
+  [ "1" ] = parse_number,
+  [ "2" ] = parse_number,
+  [ "3" ] = parse_number,
+  [ "4" ] = parse_number,
+  [ "5" ] = parse_number,
+  [ "6" ] = parse_number,
+  [ "7" ] = parse_number,
+  [ "8" ] = parse_number,
+  [ "9" ] = parse_number,
+  [ "-" ] = parse_number,
+  [ "t" ] = parse_literal,
+  [ "f" ] = parse_literal,
+  [ "n" ] = parse_literal,
+  [ "[" ] = parse_array,
+  [ "{" ] = parse_object,
+}
+
+
+parse = function(str, idx)
+  local chr = str:sub(idx, idx)
+  local f = char_func_map[chr]
+  if f then
+    return f(str, idx)
+  end
+  decode_error(str, idx, "unexpected character '" .. chr .. "'")
+end
+
+
+function json.decode(str)
+  if type(str) ~= "string" then
+    error("expected argument of type string, got " .. type(str))
+  end
+  local res, idx = parse(str, next_char(str, 1, space_chars, true))
+  idx = next_char(str, idx, space_chars, true)
+  if idx <= #str then
+    decode_error(str, idx, "trailing garbage")
+  end
+  return res
+end
+
+
+-- return json
+
+
+-- buttplug.lua -- Lua client for buttplug.io
+
+-- local json = require("json")
+-- local pollnet = require("pollnet")
+
+buttplug = {}
+
+--
+-- Buttplug messages
+--
+
+local messages = {}
+
+-- Status messages
+
+messages.Ok = {
+    Ok = {
+        Id = 1
+    }
+}
+
+messages.Error = {
+    Error = {
+        Id = 0,
+        ErrorMessage = "",
+        ErrorCode = 0
+    }
+}
+
+-- Handshake messages
+
+messages.RequestServerInfo = {
+    RequestServerInfo = {
+        Id = 1,
+        ClientName = "",
+        MessageVersion = 1
+    }
+}
+
+messages.ServerInfo = {
+    ServerInfo = {
+        Id = 1,
+        ServerName = "",
+        MessageVersion = 1,
+        MaxPingTime = 0
+    }
+}
+
+-- Enumeration messages
+
+messages.RequestDeviceList = {
+    RequestDeviceList = {
+        Id = 1
+    }
+}
+
+messages.DeviceList = {
+    DeviceList = {
+        Id = 1,
+        Devices = {}
+    }
+}
+
+messages.StartScanning = {
+    StartScanning = {
+        Id = 1
+    }
+}
+
+messages.StopScanning = {
+    StopScanning = {
+        Id = 1
+    }
+}
+
+messages.DeviceAdded = {
+    DeviceAdded = {
+        Id = 0,
+        DeviceName = "",
+        DeviceIndex = 0,
+        DeviceMessages = {}
+    }
+}
+
+messages.DeviceRemoved = {
+    DeviceRemoved = {
+        Id = 0,
+        DeviceIndex = 0
+    }
+}
+
+-- Generic device messages
+
+messages.StopAllDevices = {
+    StopAllDevices = {
+        Id = 1
+    }
+}
+
+messages.VibrateCmd = {
+    VibrateCmd = {
+        Id = 1,
+        DeviceIndex = 0,
+        Speeds = {}
+    }
+}
+
+--
+-- Global variables
+--
+
+buttplug.msg_counter = 1
+buttplug.devices = {}
+buttplug.got_server_info = false
+buttplug.got_device_list = false
+buttplug.scanning = false
+
+--
+--
+--
+
+-- Send a message to the Buttplug Server
+local function send(msg)
+    local message_type = next(msg)
+
+    msg[message_type].Id = buttplug.msg_counter
+    buttplug.msg_counter = buttplug.msg_counter + 1
+    
+    local payload = "[" .. json.encode(msg) .. "]"
+    printf("[buttplug] > " .. payload)
+    buttplug.sock:send(payload)
+end
+
+function buttplug.request_server_info(client_name)
+    local msg = messages.RequestServerInfo
+
+    msg["RequestServerInfo"]["ClientName"] = client_name
+
+    send(msg)
+end
+
+-- Sends a vibrate command to device with the index `dev_index`.
+-- `speeds` is a table with 1 vibration value per motor e.g. { 0.2, 0.2
+-- } would set both motors on a device with 2 motors to 0.2
+function buttplug.send_vibrate_cmd(dev_index, speeds)
+    if (not buttplug.has_devices()) then
+        return
+    end
+
+    local msg = messages.VibrateCmd
+
+    msg["VibrateCmd"]["DeviceIndex"] = dev_index
+
+    for i, v in ipairs(speeds) do
+        msg["VibrateCmd"]["Speeds"][i] = { Index = i - 1, Speed = v }
+    end
+
+    send(msg)
+end
+
+function buttplug.send_stop_all_devices_cmd()
+    if (not buttplug.has_devices()) then
+        return
+    end
+
+    send(messages.StopAllDevices)
+end
+
+function buttplug.count_devices()
+    return table.getn(buttplug.devices)
+end
+
+function buttplug.has_devices()
+    return buttplug.count_devices() > 0
+end
+
+function buttplug.add_device(dev)
+    local dev_count = table.getn(buttplug.devices)
+        
+    buttplug.devices[dev_count + 1] = {
+        index = dev["DeviceIndex"],
+        name = dev["DeviceName"],
+        messages = dev["DeviceMessages"]
+    }
+end
+
+function buttplug.remove_device(dev_index)
+    for i, v in ipairs(buttplug.devices) do
+        if v.index == dev_index then
+            table.remove(buttplug.devices, i)
+        end
+    end
+end
+
+-- Decide what to do based on the message type
+function buttplug.handle_message(raw_message)
+    local msg = json.decode(raw_message)[1]
+    local msg_type = next(msg)
+    local msg_contents = msg[msg_type]
+
+    -- if ServerInfo, set flag
+    if (msg_type == "ServerInfo") then
+        buttplug.got_server_info = true
+    end
+
+    -- if DeviceList, add any devices
+    if (msg_type == "DeviceList") then
+        local devices = msg_contents["Devices"]
+
+        for i, v in ipairs(devices) do
+            buttplug.add_device(v)
+        end
+
+        buttplug.got_device_list = true
+    end
+
+    -- if DeviceAdded, add the device
+    if (msg_type == "DeviceAdded") then
+        buttplug.add_device(msg_contents)
+
+        buttplug.scanning = false
+        send(messages.StopScanning)
+    end
+
+    -- if DeviceRemoved, remove the device
+    if (msg_type == "DeviceRemoved") then
+        buttplug.remove_device(msg_contents["DeviceIndex"])
+    end
+end
+
+function buttplug.get_and_handle_message()
+    local sock_status = buttplug.sock:poll()
+
+    local message = buttplug.sock:last_message()
+
+    if message then
+        printf("[buttplug] < " .. message)
+
+        buttplug.handle_message(message)
+    end
+
+    return sock_status, message
+end
+
+-- Get devices from the Buttplug Server. If we haven't already gotten a
+-- Device List, try that first. Otherwise start scanning for devices.
+function buttplug.get_devices()
+    if not buttplug.got_server_info then
+        return
+    end
+
+    if not buttplug.got_device_list then
+        send(messages.RequestDeviceList)
+    elseif not buttplug.scanning then
+        buttplug.scanning = true
+        send(messages.StartScanning)
+    end
+end
+
+-- Open the socket and send a handshake message to the server
+function buttplug.init(client_name, ws_addr)
+    buttplug.sock = pollnet_lua.open_ws(ws_addr)
+
+    buttplug.request_server_info(client_name)
+end
+
+-- return buttplug
+
 local bone_strings = {}
 
--- TODO see if we can get more bone_stringses
+-- TODO see if we can get more bone_strings
 bone_strings[19] = "head"
 bone_strings[17] = "head"
 bone_strings[16] = "head"
@@ -25,21 +991,36 @@ bone_strings[8] = "rightleg"
 
 local function start_buttplug()
     -- TODO: impl
+    buttplug.init("STALKER: Anomaly", "ws://127.0.0.1:12345")
     printf("[buttplug] started")
 end
 
 local function demo_buzz()
+    -- sleep(1000)
+    buttplug.send_vibrate_cmd(0, {0.2, 0.2})
     printf("[buttplug] buzz...")
 end
 
 -- Params: (<game_object>,<number>,<vector>,<game_object>,<number>)
 local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
-    printf("[buttplug] got hit for %s in %s", amount, bone_id)
+    local bone_name = bone_strings[bone_id]
+    printf("[buttplug] got hit for %s in %s", amount, bone_name)
+    buttplug.send_vibrate_cmd(0, {0.2, 0.2})
+end
+
+-- runs every tick
+function actor_on_update()
+	buttplug.get_and_handle_message()
+
+    if not buttplug.has_devices() then
+        buttplug.get_devices()
+    end
 end
 
 -- TODO: register callbacks
 function on_game_start()
 	RegisterScriptCallback("on_game_load", start_buttplug)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
     RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
 end
