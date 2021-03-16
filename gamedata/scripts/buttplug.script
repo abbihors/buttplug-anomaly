@@ -1008,19 +1008,28 @@ local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
     buttplug.send_vibrate_cmd(0, {0.2, 0.2})
 end
 
--- runs every tick
-function actor_on_update()
-	buttplug.get_and_handle_message()
+local tick_length = 500
+local last_tick = time_global()
+local next_tick = last_tick + tick_length
 
-    if not buttplug.has_devices() then
-        buttplug.get_devices()
+-- runs every tick
+function update_buttplug()
+    if (time_global() > next_tick) then
+        buttplug.get_and_handle_message()
+
+        if not buttplug.has_devices() then
+            buttplug.get_devices()
+        end
+
+        last_tick = time_global()
+        next_tick = last_tick + tick_length
     end
 end
 
 -- TODO: register callbacks
 function on_game_start()
 	RegisterScriptCallback("on_game_load", start_buttplug)
-    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("actor_on_update", update_buttplug)
     RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
 end
