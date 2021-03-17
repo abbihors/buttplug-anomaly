@@ -10,11 +10,13 @@ buttplug.print = function (arg)
     return printf("[buttplug] " .. arg)
 end
 
-local max_vibrate_power = 1.0
+-- Safety variables
+local max_vibration_power = 1.0
+local vibrate_factor = 1.0
 
 -- Buttplug update interval i.e. how often it checks for new messages
 local update_interval = 100 -- ms
-local last_update = 0
+local prev_update = 0
 
 -- Vars for controlling start/stop times for vibration
 local vibrating = false
@@ -156,7 +158,6 @@ gas_masks["exolight_outfit"] = true
 gas_masks["freedom_exo_vineleaf_outfit"] = true
 gas_masks["freedom_nosorog_outfit"] = true
 gas_masks["isg_exolight_outfit"] = true
-gas_masks["isg_nosorog_outfit"] = true -- i assume theres a mask under there
 gas_masks["merc_exolight_outfit"] = true
 gas_masks["merc_nosorog_outfit"] = true
 gas_masks["military_exolight_outfit"] = true
@@ -165,12 +166,15 @@ gas_masks["monolith_nosorog_outfit"] = true
 gas_masks["svoboda_exolight_outfit"] = true
 
 local function start_buttplug()
-    buttplug.init("STALKER: Anomaly", "ws://127.0.0.1:12345")
+    buttplug.init("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
     printf("[buttplug] started")
 end
 
+-- Scale vibration according to user preferences. Allows them to set a
+-- vibration factor that is applied to all vibrate commands, as well as
+-- a hard cap on vibration power.
 local function scaled_vibrate(power)
-    buttplug.send_vibrate_cmd(0, { power * max_vibrate_power})
+    buttplug.send_vibrate_cmd(0, { math.min(max_vibration_power, power * vibrate_factor) })
 end
 
 local function stop_vibrate()
@@ -252,8 +256,7 @@ local function actor_on_land(height)
     vibrate_for(power, 100)
 end
 
--- runs every tick
-function update_buttplug()
+function update_timers()
     -- Stop vibrating if its time to stop
     if vibrating and (time_global() > vibrate_stop_time) then
         stop_vibrate()
@@ -262,9 +265,11 @@ function update_buttplug()
     if time_global() > pattern_stop_time then
         vibrating = false
     end
+end
 
-    -- Only do message handling every update_interval ms
-    if (time_global() < (last_update + update_interval)) then
+function update_buttplug()
+    -- Don't update on every tick
+    if (time_global() < (prev_update + update_interval)) then
         return
     end
 
@@ -279,13 +284,14 @@ function update_buttplug()
         buttplug.get_devices()
     end
 
-    last_update = time_global()
+    prev_update = time_global()
 end
 
 function on_game_start()
     -- Required callbacks
 	RegisterScriptCallback("on_game_load", start_buttplug)
     RegisterScriptCallback("actor_on_update", update_buttplug)
+    RegisterScriptCallback("actor_on_update", update_timers)
     -- Callbacks for everything else
     RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
