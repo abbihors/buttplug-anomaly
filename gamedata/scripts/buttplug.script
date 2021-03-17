@@ -37,14 +37,27 @@ bone_names[4] = "leftleg"
 bone_names[7] = "rightleg"
 bone_names[8] = "rightleg"
 
+local vibrating = false
+local vibrate_start_time = 0
+local vibrate_stop_time = 0
+
 local function start_buttplug()
     buttplug.init("STALKER: Anomaly", "ws://127.0.0.1:12345")
     printf("[buttplug] started")
 end
 
+-- Vibrate for a fixed amount of time
+local function vibrate_for(speeds, vibrate_time)
+    if not vibrating then
+        buttplug.send_vibrate_cmd(0, speeds)
+        vibrating = true
+        vibrate_start_time = time_global()
+        vibrate_stop_time = vibrate_start_time + vibrate_time
+    end
+end
+
 local function demo_buzz()
-    buttplug.send_vibrate_cmd(0, {0.2, 0.2})
-    printf("[buttplug] buzz...")
+    vibrate_for({0.5}, 200)
 end
 
 -- Params: (<game_object>,<number>,<vector>,<game_object>,<number>)
@@ -56,6 +69,13 @@ end
 
 -- runs every tick
 function update_buttplug()
+    -- Stop vibrating if its time to stop
+    if vibrating and (time_global() > vibrate_stop_time) then
+        buttplug.send_vibrate_cmd(0, { 0.0 })
+        vibrating = false
+    end
+
+    -- Only do message handling every update_interval ms
     if (time_global() < (last_update + update_interval)) then
         return
     end
