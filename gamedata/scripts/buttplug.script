@@ -10,6 +10,8 @@ buttplug.print = function (arg)
     return printf("[buttplug] " .. arg)
 end
 
+local max_vibrate_power = 1.0
+
 -- Buttplug update interval i.e. how often it checks for new messages
 local update_interval = 500 -- ms
 local last_update = 0
@@ -167,9 +169,9 @@ local function start_buttplug()
 end
 
 -- Vibrate for a fixed amount of time
-local function vibrate_for(speeds, vibrate_time)
+local function vibrate_for(power, vibrate_time)
     if not vibrating then
-        buttplug.send_vibrate_cmd(0, speeds)
+        buttplug.send_vibrate_cmd(0, { power * max_vibrate_power })
         vibrating = true
         vibrate_start_time = time_global()
         vibrate_stop_time = vibrate_start_time + vibrate_time
@@ -177,14 +179,14 @@ local function vibrate_for(speeds, vibrate_time)
 end
 
 local function demo_buzz()
-    vibrate_for({0.5}, 200)
+    vibrate_for(0.5, 200)
 end
 
 local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
     -- printf("[buttplug] got hit for %s in %s", amount, bone_name)
     local bone_name = bone_names[bone_id]
 
-    vibrate_for({amount}, 500)
+    vibrate_for(amount, 500)
 end
 
 local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, ammo_type, grenade_type)
@@ -196,15 +198,33 @@ local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, am
 
     local caliber = string.match(ammo_section, 'ammo_(.+)_.*')
 
-    vibrate_for({ammo_power[caliber]}, 200)
+    vibrate_for(ammo_power[caliber], 200)
 end
 
 local function actor_item_to_slot(obj)
     local equipped_item = tostring(obj:section())
 
     if gas_masks[equipped_item] then
-        vibrate_for({0.5}, 1000)
+        vibrate_for(0.5, 1000)
     end
+end
+
+-- This is also here so that when the actor dies, it doesn't just buzz forever
+local function actor_on_before_death(num, killer)
+    vibrate_for(1.0, 1000)
+    buttplug.send_vibrate_cmd(0, { 0.0 })
+end
+
+local function actor_on_land(height)
+    -- 3-4 jumping up to something
+    -- 6-7 jumping in place
+    -- 10-12 jumping off a low roof
+    -- 15 and up: damage
+
+    -- Exponentially ramps up towards fall damage threshold
+    local power = ((height / 15) ^ 2) * 0.7
+
+    vibrate_for(power, 100)
 end
 
 -- runs every tick
@@ -243,4 +263,6 @@ function on_game_start()
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
     RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
+    RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
+    RegisterScriptCallback("actor_on_land", actor_on_land)
 end
