@@ -1,9 +1,32 @@
--- buttplug.lua -- Lua client for buttplug.io
+--
+-- buttplug.lua
+--
+-- MIT License
+--
+-- Copyright (c) 2021 abbiwyn
+--
+-- Permission is hereby granted, free of charge, to any person obtaining a copy
+-- of this software and associated documentation files (the "Software"), to deal
+-- in the Software without restriction, including without limitation the rights
+-- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+-- copies of the Software, and to permit persons to whom the Software is
+-- furnished to do so, subject to the following conditions:
+--
+-- The above copyright notice and this permission notice shall be included in all
+-- copies or substantial portions of the Software.
+--
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-- SOFTWARE.
 
-local json = require("gamedata\\scripts\\buttplug\\json")
-local pollnet = require("gamedata\\scripts\\buttplug\\pollnet")
+local json = require("json")
+local pollnet = require("pollnet")
 
-local buttplug = {}
+local buttplug = { _version = "0.1.0" }
 
 --
 -- Buttplug messages
@@ -229,17 +252,22 @@ function buttplug.handle_message(raw_message)
     end
 end
 
+-- Gets and handles messages from the server. Returns -1 when something
+-- goes wrong
 function buttplug.get_and_handle_message()
     local sock_status = buttplug.sock:poll()
-
     local message = buttplug.sock:last_message()
 
     if message then
+        -- Check to see if connection was refused i.e. server is down
+        local io_error = string.sub(message, 0, 8) == "IO error"
+        if io_error then
+            return -1
+        end
+
         buttplug.print("< " .. message)
         buttplug.handle_message(message)
     end
-
-    return sock_status, message
 end
 
 -- Get devices from the Buttplug Server. If we haven't already gotten a
@@ -260,7 +288,6 @@ end
 -- Open the socket and send a handshake message to the server
 function buttplug.init(client_name, ws_addr)
     buttplug.sock = pollnet.open_ws(ws_addr)
-
     buttplug.request_server_info(client_name)
 end
 

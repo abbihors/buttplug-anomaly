@@ -1,4 +1,9 @@
-buttplug = require("gamedata\\scripts\\buttplug\\buttplug")
+-- buttplug.script
+
+-- Use relative imports
+package.path = package.path .. ';gamedata\\scripts\\buttplug\\?.lua'
+
+buttplug = require("buttplug")
 
 -- Set buttplug's print function to xray's printf
 buttplug.print = function (arg)
@@ -55,7 +60,12 @@ function update_buttplug()
         return
     end
 
-    buttplug.get_and_handle_message()
+    local err = buttplug.get_and_handle_message()
+    if err ~= nil then
+        printf("[buttplug] error: couldn't connect to buttplug server")
+        printf("[buttplug] make sure the server is running, then reload your save")
+        return
+    end
 
     if not buttplug.has_devices() then
         buttplug.get_devices()
