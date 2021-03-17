@@ -215,6 +215,16 @@ local function actor_on_before_death(num, killer)
     buttplug.send_vibrate_cmd(0, { 0.0 })
 end
 
+local function on_before_surge(t)
+    printf("surge trigger")
+    vibrate_for(0.1, 7000)
+end
+
+local function on_before_psi_storm(t)
+    printf("psi storm trigger")
+    vibrate_for(0.1, 7000)
+end
+
 local function actor_on_land(height)
     -- 3-4 jumping up to something
     -- 6-7 jumping in place
@@ -265,4 +275,6 @@ function on_game_start()
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
     RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
     RegisterScriptCallback("actor_on_land", actor_on_land)
+    RegisterScriptCallback("on_before_surge", on_before_surge)
+    RegisterScriptCallback("on_before_psi_storm", on_before_psi_storm)
 end
