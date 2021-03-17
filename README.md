@@ -15,7 +15,7 @@ Adds buttplug support to STALKER: Anomaly.
 ## How Do I Use This?
 
 1. Install and launch [Intiface Desktop](https://intiface.com/desktop/) and click "Server Status". Make sure "Regular Websockets" is checked (*not* secure), then click "Start Server"
-2. Install STALKER: Anomaly and copy the files from this folder to the game folder
+2. Install [STALKER: Anomaly](https://www.moddb.com/mods/stalker-anomaly) and copy the `bin` and `gamedata` folders from this folder to your game folder
 3. Launch the game and load up a save or start a new game
 4. Turn on your device, it should automatically be detected
 5. Your toy will do a small vibration to let you know that it's connected to the game, but you can also check the console by pressing \` (tilde) and making sure it says "`[buttplug] found device`"
