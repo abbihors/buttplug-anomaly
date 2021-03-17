@@ -67,6 +67,38 @@ local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
     vibrate_for({amount}, 500)
 end
 
+local ammo_power = {}
+
+ammo_power["vog-25"] = 0.5
+ammo_power["pkm"] = 0.5
+ammo_power["og-7b"] = 0.5 -- RPG-7
+ammo_power["magnum"] = 0.5 -- 338 lapua magnum
+ammo_power["m209"] = 0.5
+ammo_power["gauss"] = 0.5
+ammo_power["9x39"] = 0.5
+ammo_power["9x19"] = 0.5
+ammo_power["9x18"] = 0.5
+ammo_power["7.92x33"] = 0.5
+ammo_power["7.62x54"] = 0.5
+ammo_power["7.62x51"] = 0.5
+ammo_power["7.62x39"] = 0.5
+ammo_power["7.62x25"] = 0.5
+ammo_power["50"] = 0.5 -- 50 bmg
+ammo_power["5.7x28"] = 0.5
+ammo_power["5.56x45"] = 0.5
+ammo_power["5.45x39"] = 0.5
+ammo_power["4.6x30"] = 0.5
+ammo_power["357_hp"] = 0.5
+ammo_power["12x76"] = 0.5
+ammo_power["12x70"] = 0.5
+ammo_power["12.7x55"] = 0.5
+ammo_power["11.43x23"] = 0.5
+-- ammo_power["knife"] = 0.5
+-- ammo_power["dyno"] = 0.5
+-- ammo_power["binoc"] = 0.5
+-- ammo_power["batteries"] = 0.5
+-- ammo_power["base"] = 0.5
+
 local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, ammo_type, grenade_type)
 	local wpn_id = wpn:id()
 	local sec = wpn:section()
@@ -76,11 +108,7 @@ local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, am
 
     local caliber = string.match(ammo_section, 'ammo_(.+)_.*')
 
-    if caliber == "9x18" then
-        vibrate_for({0.3}, 100)
-    elseif caliber == "7.62x39" then
-        vibrate_for({1}, 100)
-    end
+    vibrate_for({ammo_power[caliber]}, 200)
 end
 
 -- runs every tick
