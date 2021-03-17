@@ -60,11 +60,27 @@ local function demo_buzz()
     vibrate_for({0.5}, 200)
 end
 
--- Params: (<game_object>,<number>,<vector>,<game_object>,<number>)
 local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
+    -- printf("[buttplug] got hit for %s in %s", amount, bone_name)
     local bone_name = bone_names[bone_id]
-    printf("[buttplug] got hit for %s in %s", amount, bone_name)
-    buttplug.send_vibrate_cmd(0, {0.2, 0.2})
+
+    vibrate_for({amount}, 500)
+end
+
+local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, ammo_type, grenade_type)
+	local wpn_id = wpn:id()
+	local sec = wpn:section()
+	local ammo_type_number = wpn:get_ammo_type()
+	local ammo_list = utils_item.get_ammo(sec, wpn_id)
+	local ammo_section = ammo_list[ammo_type_number+1]
+
+    local caliber = string.match(ammo_section, 'ammo_(.+)_.*')
+
+    if caliber == "9x18" then
+        vibrate_for({0.3}, 100)
+    elseif caliber == "7.62x39" then
+        vibrate_for({1}, 100)
+    end
 end
 
 -- runs every tick
@@ -101,4 +117,5 @@ function on_game_start()
     -- Callbacks for everything else
     RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
+    RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
 end
