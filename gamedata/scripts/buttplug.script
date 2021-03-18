@@ -15,7 +15,7 @@ local max_vibration_power = 1.0
 local vibrate_factor = 1.0
 
 -- Buttplug update interval i.e. how often it checks for new messages
-local update_interval = 100 -- ms
+local update_interval = 500 -- ms
 local prev_update = 0
 
 -- Vars for controlling start/stop times for vibration
