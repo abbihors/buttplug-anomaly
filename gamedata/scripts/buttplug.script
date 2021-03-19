@@ -165,8 +165,8 @@ gas_masks["monolith_exolight_outfit"] = true
 gas_masks["monolith_nosorog_outfit"] = true
 gas_masks["svoboda_exolight_outfit"] = true
 
-local function start_buttplug()
-    buttplug.init("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
+function start_buttplug()
+    buttplug.connect("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
     printf("[buttplug] started")
 end
 
@@ -174,11 +174,17 @@ end
 -- vibration factor that is applied to all vibrate commands, as well as
 -- a hard cap on vibration power.
 local function scaled_vibrate(power)
-    buttplug.send_vibrate_cmd(0, { math.min(max_vibration_power, power * vibrate_factor) })
+    -- Don't do anything if we don't have a device
+    if buttplug.has_devices() then
+        buttplug.send_vibrate_cmd(0, { math.min(max_vibration_power, power * vibrate_factor) })
+    end
 end
 
 local function stop_vibrate()
-    buttplug.send_vibrate_cmd(0, { 0 })
+    -- Don't do anything if we don't have a device
+    if buttplug.has_devices() then
+        buttplug.send_vibrate_cmd(0, { 0 })
+    end
 end
 
 local function pattern_vibrate(power, on_time, off_time)
@@ -194,10 +200,6 @@ end
 -- Vibrate for a fixed amount of time
 local function vibrate_for(power, on_time)
     pattern_vibrate(power, on_time, 0)
-end
-
-local function demo_buzz()
-    -- vibrate_for(0.5, 200)
 end
 
 local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
@@ -256,6 +258,25 @@ local function actor_on_land(height)
     vibrate_for(power, 100)
 end
 
+local scanning = false
+
+-- Get a device from the Buttplug server
+local function get_device()
+    -- Not connected yet
+    if not buttplug.got_server_info then
+        return
+    end
+
+    -- Try the device list first
+    if not buttplug.got_device_list then
+        buttplug.request_device_list()
+    elseif not scanning then
+        -- If device list was empty, start scanning
+        buttplug.start_scanning()
+        scanning = true
+    end
+end
+
 function update_timers()
     -- Stop vibrating if its time to stop
     if vibrating and (time_global() > vibrate_stop_time) then
@@ -280,8 +301,11 @@ function update_buttplug()
         return
     end
 
-    if not buttplug.has_devices() then
-        buttplug.get_devices()
+    if scanning and buttplug.has_devices() then
+        buttplug.stop_scanning()
+        scanning = false
+    elseif not buttplug.has_devices() then    
+        get_device()
     end
 
     prev_update = time_global()
@@ -293,7 +317,6 @@ function on_game_start()
     RegisterScriptCallback("actor_on_update", update_buttplug)
     RegisterScriptCallback("actor_on_update", update_timers)
     -- Callbacks for everything else
-    RegisterScriptCallback("actor_on_weapon_reload", demo_buzz)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
     RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)

@@ -26,7 +26,7 @@
 local json = require("json")
 local pollnet = require("pollnet")
 
-local buttplug = { _version = "0.1.0" }
+local buttplug = {}
 
 --
 -- Buttplug messages
@@ -114,6 +114,13 @@ messages.DeviceRemoved = {
 
 -- Generic device messages
 
+messages.StopDeviceCmd = {
+    StopDeviceCmd = {
+        Id = 1,
+        DeviceIndex = 0
+    }
+}
+
 messages.StopAllDevices = {
     StopAllDevices = {
         Id = 1
@@ -136,23 +143,28 @@ buttplug.msg_counter = 1
 buttplug.devices = {}
 buttplug.got_server_info = false
 buttplug.got_device_list = false
-buttplug.scanning = false
 buttplug.print = print
 
 --
 --
 --
 
+local function message_type(msg)
+    -- Message type is the first field
+    return next(msg)
+end
+
 -- Send a message to the Buttplug Server
 local function send(msg)
-    local message_type = next(msg)
+    local message_type = message_type(msg)
 
+    -- Set message ID num and increment counter
     msg[message_type].Id = buttplug.msg_counter
     buttplug.msg_counter = buttplug.msg_counter + 1
     
     local payload = "[" .. json.encode(msg) .. "]"
     buttplug.print("> " .. payload)
-    buttplug.sock:send(payload)
+    return buttplug.sock:send(payload)
 end
 
 function buttplug.request_server_info(client_name)
@@ -160,17 +172,25 @@ function buttplug.request_server_info(client_name)
 
     msg["RequestServerInfo"]["ClientName"] = client_name
 
-    send(msg)
+    return send(msg)
+end
+
+function buttplug.request_device_list()
+    return send(messages.RequestDeviceList)
+end
+
+function buttplug.start_scanning()
+    return send(messages.StartScanning)
+end
+
+function buttplug.stop_scanning()
+    return send(messages.StopScanning)
 end
 
 -- Sends a vibrate command to device with the index `dev_index`.
 -- `speeds` is a table with 1 vibration value per motor e.g. { 0.2, 0.2
 -- } would set both motors on a device with 2 motors to 0.2
 function buttplug.send_vibrate_cmd(dev_index, speeds)
-    if (not buttplug.has_devices()) then
-        return
-    end
-
     local msg = messages.VibrateCmd
 
     msg["VibrateCmd"]["DeviceIndex"] = dev_index
@@ -179,15 +199,19 @@ function buttplug.send_vibrate_cmd(dev_index, speeds)
         msg["VibrateCmd"]["Speeds"][i] = { Index = i - 1, Speed = v }
     end
 
-    send(msg)
+    return send(msg)
+end
+
+function buttplug.send_stop_device_cmd(dev_index)
+    local msg = messages.StopDevice
+
+    msg["StopDeviceCmd"]["DeviceIndex"] = dev_index
+
+    return send(msg)
 end
 
 function buttplug.send_stop_all_devices_cmd()
-    if (not buttplug.has_devices()) then
-        return
-    end
-
-    send(messages.StopAllDevices)
+    return send(messages.StopAllDevices)
 end
 
 function buttplug.count_devices()
@@ -219,7 +243,7 @@ end
 -- Decide what to do based on the message type
 function buttplug.handle_message(raw_message)
     local msg = json.decode(raw_message)[1]
-    local msg_type = next(msg)
+    local msg_type = message_type(msg)
     local msg_contents = msg[msg_type]
 
     -- if ServerInfo, set flag
@@ -241,9 +265,6 @@ function buttplug.handle_message(raw_message)
     -- if DeviceAdded, add the device
     if (msg_type == "DeviceAdded") then
         buttplug.add_device(msg_contents)
-
-        buttplug.scanning = false
-        send(messages.StopScanning)
     end
 
     -- if DeviceRemoved, remove the device
@@ -252,43 +273,26 @@ function buttplug.handle_message(raw_message)
     end
 end
 
--- Gets and handles messages from the server. Returns -1 when something
--- goes wrong
+-- Gets and handles messages from the server. Returns the message when
+-- something goes wrong
 function buttplug.get_and_handle_message()
-    local sock_status = buttplug.sock:poll()
-    local message = buttplug.sock:last_message()
+    local happy, message = buttplug.sock:poll()
+    
+    if not happy then
+        return message
+    end
 
     if message then
-        -- Check to see if connection was refused i.e. server is down
-        local io_error = string.sub(message, 0, 8) == "IO error"
-        if io_error then
-            return -1
-        end
-
         buttplug.print("< " .. message)
         buttplug.handle_message(message)
     end
 end
 
--- Get devices from the Buttplug Server. If we haven't already gotten a
--- Device List, try that first. Otherwise start scanning for devices.
-function buttplug.get_devices()
-    if not buttplug.got_server_info then
-        return
-    end
-
-    if not buttplug.got_device_list then
-        send(messages.RequestDeviceList)
-    elseif not buttplug.scanning then
-        buttplug.scanning = true
-        send(messages.StartScanning)
-    end
-end
-
 -- Open the socket and send a handshake message to the server
-function buttplug.init(client_name, ws_addr)
+function buttplug.connect(client_name, ws_addr)
+    buttplug.client_name = client_name
     buttplug.sock = pollnet.open_ws(ws_addr)
-    buttplug.request_server_info(client_name)
+    buttplug.request_server_info(buttplug.client_name)
 end
 
 return buttplug
