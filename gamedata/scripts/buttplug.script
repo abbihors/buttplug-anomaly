@@ -23,6 +23,12 @@ local vibrating = false
 local vibrate_start_time = 0
 local vibrate_stop_time = 0
 local pattern_stop_time = 0
+local base_vibration_level = 0.0
+
+-- Misc vars
+local buttplug_scanning = false
+local prev_health = 1
+local prev_bleeding = 0
 
 -- Bone names for determining which body part got hit
 local bone_names = {}
@@ -170,14 +176,28 @@ function start_buttplug()
     printf("[buttplug] started")
 end
 
+local function scaled_power(power)
+    return math.min(max_vibration_power, power * vibrate_factor)
+end
+
 -- Scale vibration according to user preferences. Allows them to set a
 -- vibration factor that is applied to all vibrate commands, as well as
 -- a hard cap on vibration power.
 local function scaled_vibrate(power)
     -- Don't do anything if we don't have a device
     if buttplug.has_devices() then
-        buttplug.send_vibrate_cmd(0, { math.min(max_vibration_power, power * vibrate_factor) })
+        buttplug.send_vibrate_cmd(0, { scaled_power(power) })
     end
+end
+
+local function set_base_vibration_level(power)
+    if not buttplug.has_devices() then
+        return
+    end
+
+    scaled_vibrate(power)
+
+    base_vibration_level = scaled_power(power)
 end
 
 local function stop_vibrate()
@@ -231,8 +251,10 @@ end
 
 -- This is also here so that when the actor dies, it doesn't just buzz forever
 local function actor_on_before_death(num, killer)
-    -- vibrate_for(1.0, 1000)
     stop_vibrate()
+    
+    -- Wait for the message to arrive lol
+    buttplug.get_and_handle_message()
 end
 
 -- TODO: These are bugged and somehow persist after Lua is destroyed
@@ -258,7 +280,36 @@ local function actor_on_land(height)
     vibrate_for(power, 100)
 end
 
-local scanning = false
+local function set_vibration_from_bleed(bleeding)
+    local new_level = base_vibration_level
+
+    if bleeding == 0 then new_level = 0.0
+    elseif bleeding > 0.95 then new_level = 0.4
+    elseif bleeding > 0.90 then new_level = 0.3
+    elseif bleeding > 0.80 then new_level = 0.2
+    elseif bleeding > 0.40 then new_level = 0.1
+    elseif bleeding > 0.00 then new_level = 0.05
+    end
+
+    if new_level ~= base_vibration_level then
+        -- printf("stepping vibrate level to: %s", new_level)
+        set_base_vibration_level(new_level)
+    end
+
+    -- printf("bleeding: %s", bleeding)
+end
+
+local function actor_on_update()
+    local actor = db.actor
+    if (not actor) then
+		return
+	end
+
+    -- local health = actor.health
+    local bleeding = actor.bleeding
+
+    set_vibration_from_bleed(bleeding)
+end
 
 -- Get a device from the Buttplug server
 local function get_device()
@@ -270,17 +321,17 @@ local function get_device()
     -- Try the device list first
     if not buttplug.got_device_list then
         buttplug.request_device_list()
-    elseif not scanning then
+    elseif not buttplug_scanning then
         -- If device list was empty, start scanning
         buttplug.start_scanning()
-        scanning = true
+        buttplug_scanning = true
     end
 end
 
 function update_timers()
     -- Stop vibrating if its time to stop
     if vibrating and (time_global() > vibrate_stop_time) then
-        stop_vibrate()
+        scaled_vibrate(base_vibration_level)
     end
 
     if time_global() > pattern_stop_time then
@@ -301,9 +352,9 @@ function update_buttplug()
         return
     end
 
-    if scanning and buttplug.has_devices() then
+    if buttplug_scanning and buttplug.has_devices() then
         buttplug.stop_scanning()
-        scanning = false
+        buttplug_scanning = false
     elseif not buttplug.has_devices() then    
         get_device()
     end
@@ -317,6 +368,7 @@ function on_game_start()
     RegisterScriptCallback("actor_on_update", update_buttplug)
     RegisterScriptCallback("actor_on_update", update_timers)
     -- Callbacks for everything else
+    RegisterScriptCallback("actor_on_update", actor_on_update)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
     RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
