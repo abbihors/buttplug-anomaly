@@ -202,7 +202,7 @@ local function set_base_vibration_level(power)
         scaled_vibrate(power)
     end
 
-    base_vibration_level = scaled_power(power)
+    base_vibration_level = power
 end
 
 local function stop_vibrate()
