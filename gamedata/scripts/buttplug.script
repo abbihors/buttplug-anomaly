@@ -69,7 +69,7 @@ ammo_power["4.6x30"] = 0.4
 
 ammo_power["5.56x45"] = 0.5
 ammo_power["5.45x39"] = 0.5
-ammo_power["357_hp"] = 0.5
+ammo_power["357"] = 0.5
 ammo_power["9x39"] = 0.5
 
 ammo_power["vog-25"] = 0.6
@@ -83,12 +83,12 @@ ammo_power["12x76"] = 0.7
 ammo_power["12x70"] = 0.7
 
 ammo_power["7.62x54"] = 0.8 -- mosin
-ammo_power["pkm_100"] = 0.8 -- 7.62x54 box mags
+ammo_power["pkm"] = 0.8 -- 7.62x54 box mags
 ammo_power["gauss"] = 0.8
 
-ammo_power["magnum_300"] = 1.0 -- 338 lapua magnum
+ammo_power["magnum"] = 1.0 -- 338 lapua magnum
 ammo_power["12.7x55"] = 1.0 -- VSK
-ammo_power["50_bmg"] = 1.0 -- 50 bmg
+ammo_power["50"] = 1.0 -- 50 bmg
 
 -- ammo_power["knife"] = 0.5
 -- ammo_power["dyno"] = 0.5
@@ -197,7 +197,10 @@ local function set_base_vibration_level(power)
         return
     end
 
-    scaled_vibrate(power)
+    -- Only send a vibrate command if nothing else is vibrating
+    if not vibrating then
+        scaled_vibrate(power)
+    end
 
     base_vibration_level = scaled_power(power)
 end
@@ -238,10 +241,9 @@ local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, am
 	local ammo_list = utils_item.get_ammo(sec, wpn_id)
 	local ammo_section = ammo_list[ammo_type_number+1]
 
-    local caliber = string.match(ammo_section, 'ammo_(.+)_.*')
+    local caliber = string.match(ammo_section, 'ammo_([^_]+)')
 
-    -- fuck this broke
-    -- pattern_vibrate(ammo_power[caliber], 250, 50)
+    pattern_vibrate(ammo_power[caliber], 250, 250)
 end
 
 local function actor_item_to_slot(obj)
@@ -261,7 +263,7 @@ local function actor_on_before_death(whoID, flags)
 
     if not dying then
         dying = true
-        die_time = time_global() + 200
+        die_time = time_global() + 500
         stop_vibrate()
     end
 
@@ -354,9 +356,13 @@ end
 function update_timers()
     -- Stop vibrating if its time to stop
     if vibrating and (time_global() > vibrate_stop_time) then
-        scaled_vibrate(base_vibration_level)
+        -- Only send a command if we have to
+        if current_vibration_level ~= base_vibration_level then
+            scaled_vibrate(base_vibration_level)
+        end
     end
 
+    -- New vibrate commands can be issued
     if time_global() > pattern_stop_time then
         vibrating = false
     end
