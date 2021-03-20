@@ -24,6 +24,7 @@ local vibrate_start_time = 0
 local vibrate_stop_time = 0
 local pattern_stop_time = 0
 local base_vibration_level = 0.0
+local current_vibration_level = 0.0
 
 -- Misc vars
 local buttplug_scanning = false
@@ -186,6 +187,7 @@ end
 local function scaled_vibrate(power)
     -- Don't do anything if we don't have a device
     if buttplug.has_devices() then
+        current_vibration_level = power -- Save the UNSCALED power
         buttplug.send_vibrate_cmd(0, { scaled_power(power) })
     end
 end
@@ -324,6 +326,14 @@ local function actor_on_update()
     set_vibration_from_bleed(bleeding)
 end
 
+local function main_menu_on_init()
+    buttplug.send_stop_device_cmd(0)
+end
+
+local function main_menu_on_quit()
+    scaled_vibrate(current_vibration_level)
+end
+
 -- Get a device from the Buttplug server
 local function get_device()
     -- Not connected yet
@@ -389,4 +399,6 @@ function on_game_start()
     RegisterScriptCallback("actor_on_land", actor_on_land)
     RegisterScriptCallback("on_before_surge", on_before_surge)
     RegisterScriptCallback("on_before_psi_storm", on_before_psi_storm)
+    RegisterScriptCallback("main_menu_on_init", main_menu_on_init)
+    RegisterScriptCallback("main_menu_on_quit", main_menu_on_quit)
 end

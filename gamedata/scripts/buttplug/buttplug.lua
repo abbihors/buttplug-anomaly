@@ -203,7 +203,7 @@ function buttplug.send_vibrate_cmd(dev_index, speeds)
 end
 
 function buttplug.send_stop_device_cmd(dev_index)
-    local msg = messages.StopDevice
+    local msg = messages.StopDeviceCmd
 
     msg["StopDeviceCmd"]["DeviceIndex"] = dev_index
 
