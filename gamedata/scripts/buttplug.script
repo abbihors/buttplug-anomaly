@@ -238,7 +238,8 @@ local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, am
 
     local caliber = string.match(ammo_section, 'ammo_(.+)_.*')
 
-    pattern_vibrate(ammo_power[caliber], 250, 50)
+    -- fuck this broke
+    -- pattern_vibrate(ammo_power[caliber], 250, 50)
 end
 
 local function actor_item_to_slot(obj)
@@ -249,12 +250,24 @@ local function actor_item_to_slot(obj)
     end
 end
 
+local dying = false
+local die_time = 0
+
 -- This is also here so that when the actor dies, it doesn't just buzz forever
-local function actor_on_before_death(num, killer)
-    stop_vibrate()
-    
-    -- Wait for the message to arrive lol
+local function actor_on_before_death(whoID, flags)
+    flags.ret_value = false
+
+    if not dying then
+        dying = true
+        die_time = time_global() + 200
+        stop_vibrate()
+    end
+
     buttplug.get_and_handle_message()
+
+    if time_global() > die_time then
+        db.actor:kill(db.actor, true)
+    end
 end
 
 -- TODO: These are bugged and somehow persist after Lua is destroyed
