@@ -243,7 +243,7 @@ local function actor_on_weapon_fired(obj, wpn, ammo_elapsed, grenade_elapsed, am
 
     local caliber = string.match(ammo_section, 'ammo_([^_]+)')
 
-    pattern_vibrate(ammo_power[caliber], 250, 250)
+    pattern_vibrate(ammo_power[caliber], 200, 100)
 end
 
 local function actor_item_to_slot(obj)
