@@ -32,145 +32,139 @@ local prev_health = 1
 local prev_bleeding = 0
 
 -- Bone names for determining which body part got hit
-local bone_names = {}
-
-bone_names[19] = "head"
-bone_names[17] = "head"
-bone_names[16] = "head"
-bone_names[15] = "head"
-bone_names[14] = "head"
-bone_names[13] = "torso"
-bone_names[12] = "torso"
-bone_names[11] = "torso"
-bone_names[2] = "torso"
-bone_names[20] = "leftarm"
-bone_names[21] = "leftarm"
-bone_names[22] = "leftarm"
-bone_names[23] = "leftarm"
-bone_names[33] = "rightarm"
-bone_names[34] = "rightarm"
-bone_names[35] = "rightarm"
-bone_names[36] = "rightarm"
-bone_names[3] = "leftleg"
-bone_names[4] = "leftleg"
-bone_names[7] = "rightleg"
-bone_names[8] = "rightleg"
+local bone_names = {
+    [19] = "head",
+    [17] = "head",
+    [16] = "head",
+    [15] = "head",
+    [14] = "head",
+    [13] = "torso",
+    [12] = "torso",
+    [11] = "torso",
+    [2] = "torso",
+    [20] = "leftarm",
+    [21] = "leftarm",
+    [22] = "leftarm",
+    [23] = "leftarm",
+    [33] = "rightarm",
+    [34] = "rightarm",
+    [35] = "rightarm",
+    [36] = "rightarm",
+    [3] = "leftleg",
+    [4] = "leftleg",
+    [7] = "rightleg",
+    [8] = "rightleg"
+}
 
 -- Caliber based vibration strength
-local ammo_power = {}
+local ammo_power = {
+    ["7.62x25"] = 0.3, -- tokarev
+    ["9x18"] = 0.3, -- makarov
+    ["9x19"] = 0.3, -- glock
 
-ammo_power["7.62x25"] = 0.3 -- tokarev
-ammo_power["9x18"] = 0.3 -- makarov
-ammo_power["9x19"] = 0.3 -- glock
+    ["11.43x23"] = 0.4, -- .45 ACP
+    ["5.7x28"] = 0.4,
+    ["4.6x30"] = 0.4,
 
-ammo_power["11.43x23"] = 0.4 -- .45 ACP
-ammo_power["5.7x28"] = 0.4
-ammo_power["4.6x30"] = 0.4
+    ["5.56x45"] = 0.5,
+    ["5.45x39"] = 0.5,
+    ["357"] = 0.5,
+    ["9x39"] = 0.5,
 
-ammo_power["5.56x45"] = 0.5
-ammo_power["5.45x39"] = 0.5
-ammo_power["357"] = 0.5
-ammo_power["9x39"] = 0.5
+    ["vog-25"] = 0.6,
+    ["m209"] = 0.6,
 
-ammo_power["vog-25"] = 0.6
-ammo_power["m209"] = 0.6
+    ["7.92x33"] = 0.7, -- stg-44
+    ["7.62x51"] = 0.7, -- FAL
+    ["7.62x39"] = 0.7, -- AKM
+    ["og-7b"] = 0.7, -- RPG-7
+    ["12x76"] = 0.7,
+    ["12x70"] = 0.7,
 
-ammo_power["7.92x33"] = 0.7 -- stg-44
-ammo_power["7.62x51"] = 0.7 -- FAL
-ammo_power["7.62x39"] = 0.7 -- AKM
-ammo_power["og-7b"] = 0.7 -- RPG-7
-ammo_power["12x76"] = 0.7
-ammo_power["12x70"] = 0.7
+    ["7.62x54"] = 0.8, -- mosin
+    ["pkm"] = 0.8, -- 7.62x54 box mags
+    ["gauss"] = 0.8,
 
-ammo_power["7.62x54"] = 0.8 -- mosin
-ammo_power["pkm"] = 0.8 -- 7.62x54 box mags
-ammo_power["gauss"] = 0.8
-
-ammo_power["magnum"] = 1.0 -- 338 lapua magnum
-ammo_power["12.7x55"] = 1.0 -- VSK
-ammo_power["50"] = 1.0 -- 50 bmg
-
--- ammo_power["knife"] = 0.5
--- ammo_power["dyno"] = 0.5
--- ammo_power["binoc"] = 0.5
--- ammo_power["batteries"] = 0.5
--- ammo_power["base"] = 0.5
+    ["12.7x55"] = 1.0, -- VSK
+    ["magnum"] = 1.0, -- 338 lapua magnum
+    ["50"] = 1.0 -- 50 bmg
+}
 
 -- List of gas mask equipped outfits in the game
-local gas_masks = {}
-
--- Helmets
-gas_masks["helm_resp"] = true
-gas_masks["helm_ach7ex"] = true
-gas_masks["helm_battle"] = true
-gas_masks["helm_exo"] = true
-gas_masks["helm_m40"] = true
-gas_masks["helm_m50"] = true
-gas_masks["helm_metro"] = true
-gas_masks["helm_ppm88"] = true
-gas_masks["helm_protective"] = true
-gas_masks["helm_ranger"] = true
-gas_masks["helm_respirator"] = true
-gas_masks["helm_respirator_gp5"] = true
-gas_masks["helm_respirator_old"] = true
-gas_masks["helm_spartan"] = true
-gas_masks["helm_tactic"] = true
--- Outfits (medium)
-gas_masks["bandit_nbc_outfit"] = true
-gas_masks["bandit_scientific_dark_outfit"] = true
-gas_masks["bandit_scientific_outfit"] = true
-gas_masks["cs_nbc_outfit"] = true
-gas_masks["cs_scientific_outfit"] = true
-gas_masks["cs_scientific_outfit_good"] = true
-gas_masks["dolg_scientific_outfit"] = true
-gas_masks["dolg_scientific_red_outfit"] = true
-gas_masks["dolg_scientific_wood_outfit"] = true
-gas_masks["ecolog_outfit_blue"] = true
-gas_masks["ecolog_outfit_green"] = true
-gas_masks["ecolog_outfit_orange"] = true
-gas_masks["ecolog_outfit_red"] = true
-gas_masks["ecolog_outfit_white"] = true
-gas_masks["ecolog_outfit_yello"] = true
-gas_masks["hybrid_outfit"] = true
-gas_masks["isg_scientific_outfit"] = true
-gas_masks["merc_ace_outfit"] = true
-gas_masks["merc_combat_scientific_outfit"] = true
-gas_masks["merc_scientific_armored_outfit"] = true
-gas_masks["merc_scientific_outfit"] = true
-gas_masks["monolith_nbc_outfit"] = true
-gas_masks["monolith_scientific_outfit"] = true
-gas_masks["nbc_dolg_outfit"] = true
-gas_masks["nbc_freedom_outfit"] = true
-gas_masks["nbc_outfit"] = true
-gas_masks["renegade_scientific_outfit"] = true
-gas_masks["scientific_outfit"] = true
-gas_masks["svoboda_scientific_outfit"] = true
-gas_masks["wastelander_outfit"] = true
-gas_masks["nbc_merc_outfit"] = true
--- Outfits (heavy)
-gas_masks["army_nosorog_outfit"] = true
-gas_masks["bandit_exolight_outfit"] = true
-gas_masks["cs_exolight_outfit"] = true
-gas_masks["dolg_exolight_outfit"] = true
-gas_masks["dolg_nosorog_outfit"] = true
-gas_masks["exo_dolg_outfit"] = true
-gas_masks["exo_dolg_red_outfit"] = true
-gas_masks["exo_dolg_urban_outfit"] = true
-gas_masks["exo_dolg_wood_outfit"] = true
-gas_masks["exo_merc_grass_outfit"] = true
-gas_masks["exo_merc_urban_outfit"] = true
-gas_masks["exo_merc_wood_outfit"] = true
-gas_masks["exo_wood_outfit"] = true
-gas_masks["exolight_outfit"] = true
-gas_masks["freedom_exo_vineleaf_outfit"] = true
-gas_masks["freedom_nosorog_outfit"] = true
-gas_masks["isg_exolight_outfit"] = true
-gas_masks["merc_exolight_outfit"] = true
-gas_masks["merc_nosorog_outfit"] = true
-gas_masks["military_exolight_outfit"] = true
-gas_masks["monolith_exolight_outfit"] = true
-gas_masks["monolith_nosorog_outfit"] = true
-gas_masks["svoboda_exolight_outfit"] = true
+local gas_masks = {
+    -- Helmets
+    ["helm_resp"] = true,
+    ["helm_ach7ex"] = true,
+    ["helm_battle"] = true,
+    ["helm_exo"] = true,
+    ["helm_m40"] = true,
+    ["helm_m50"] = true,
+    ["helm_metro"] = true,
+    ["helm_ppm88"] = true,
+    ["helm_protective"] = true,
+    ["helm_ranger"] = true,
+    ["helm_respirator"] = true,
+    ["helm_respirator_gp5"] = true,
+    ["helm_respirator_old"] = true,
+    ["helm_spartan"] = true,
+    ["helm_tactic"] = true,
+    -- Outfits (medium)
+    ["bandit_nbc_outfit"] = true,
+    ["bandit_scientific_dark_outfit"] = true,
+    ["bandit_scientific_outfit"] = true,
+    ["cs_nbc_outfit"] = true,
+    ["cs_scientific_outfit"] = true,
+    ["cs_scientific_outfit_good"] = true,
+    ["dolg_scientific_outfit"] = true,
+    ["dolg_scientific_red_outfit"] = true,
+    ["dolg_scientific_wood_outfit"] = true,
+    ["ecolog_outfit_blue"] = true,
+    ["ecolog_outfit_green"] = true,
+    ["ecolog_outfit_orange"] = true,
+    ["ecolog_outfit_red"] = true,
+    ["ecolog_outfit_white"] = true,
+    ["ecolog_outfit_yello"] = true,
+    ["hybrid_outfit"] = true,
+    ["isg_scientific_outfit"] = true,
+    ["merc_ace_outfit"] = true,
+    ["merc_combat_scientific_outfit"] = true,
+    ["merc_scientific_armored_outfit"] = true,
+    ["merc_scientific_outfit"] = true,
+    ["monolith_nbc_outfit"] = true,
+    ["monolith_scientific_outfit"] = true,
+    ["nbc_dolg_outfit"] = true,
+    ["nbc_freedom_outfit"] = true,
+    ["nbc_outfit"] = true,
+    ["renegade_scientific_outfit"] = true,
+    ["scientific_outfit"] = true,
+    ["svoboda_scientific_outfit"] = true,
+    ["wastelander_outfit"] = true,
+    ["nbc_merc_outfit"] = true,
+    -- Outfits (heavy)
+    ["army_nosorog_outfit"] = true,
+    ["bandit_exolight_outfit"] = true,
+    ["cs_exolight_outfit"] = true,
+    ["dolg_exolight_outfit"] = true,
+    ["dolg_nosorog_outfit"] = true,
+    ["exo_dolg_outfit"] = true,
+    ["exo_dolg_red_outfit"] = true,
+    ["exo_dolg_urban_outfit"] = true,
+    ["exo_dolg_wood_outfit"] = true,
+    ["exo_merc_grass_outfit"] = true,
+    ["exo_merc_urban_outfit"] = true,
+    ["exo_merc_wood_outfit"] = true,
+    ["exo_wood_outfit"] = true,
+    ["exolight_outfit"] = true,
+    ["freedom_exo_vineleaf_outfit"] = true,
+    ["freedom_nosorog_outfit"] = true,
+    ["isg_exolight_outfit"] = true,
+    ["merc_exolight_outfit"] = true,
+    ["merc_nosorog_outfit"] = true,
+    ["military_exolight_outfit"] = true,
+    ["monolith_exolight_outfit"] = true,
+    ["monolith_nosorog_outfit"] = true,
+    ["svoboda_exolight_outfit"] = true
+}
 
 function start_buttplug()
     buttplug.connect("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
