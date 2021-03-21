@@ -180,10 +180,16 @@ end
 -- a hard cap on vibration power.
 local function scaled_vibrate(power)
     -- Don't do anything if we don't have a device
-    if buttplug.has_devices() then
-        current_vibration_level = power -- Save the UNSCALED power
-        buttplug.send_vibrate_cmd(0, { scaled_power(power) })
+    if not buttplug.has_devices() then
+        return
     end
+
+    current_vibration_level = power
+
+    -- Never scale below the lowest possible value for the toy
+    local scaled_power = math.max(0.05, scaled_power(power))
+
+    buttplug.send_vibrate_cmd(0, { scaled_power })
 end
 
 local function set_base_vibration_level(power)
