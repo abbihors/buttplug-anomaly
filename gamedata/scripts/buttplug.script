@@ -171,7 +171,7 @@ function start_buttplug()
     printf("[buttplug] started")
 end
 
-local function scaled_power(power)
+local function scale_power(power)
     return math.min(max_vibration_power, power * vibrate_factor)
 end
 
@@ -186,8 +186,13 @@ local function scaled_vibrate(power)
 
     current_vibration_level = power
 
-    -- Never scale below the lowest possible value for the toy
-    local scaled_power = math.max(0.05, scaled_power(power))
+    local scaled_power = 0
+
+    -- Only scale if power is above 0
+    if power > 0 then
+        -- Never scale below the lowest possible value for the toy
+        scaled_power = math.max(0.05, scale_power(power))
+    end
 
     buttplug.send_vibrate_cmd(0, { scaled_power })
 end
@@ -257,6 +262,7 @@ end
 local dying = false
 local die_time = 0
 
+-- TODO: Fix this breaks controller death and also doesn't work lol
 -- This is also here so that when the actor dies, it doesn't just buzz forever
 local function actor_on_before_death(whoID, flags)
     flags.ret_value = false
@@ -314,6 +320,29 @@ local function set_vibration_from_bleed(bleeding)
     end
 
     -- printf("bleeding: %s", bleeding)
+end
+
+local function is_actor_zombied()
+    return db.actor:character_community() == "actor_zombied"
+end
+
+local function is_controller(obj)
+    return obj:clsid() == clsid.controller_s
+end
+
+-- Got this from arszi_psy.script, which is where all the psy-stuff is
+-- done in Anomaly
+local function actor_on_before_hit(s_hit)
+    if (s_hit.type ~= 4) then return end
+
+    if (is_actor_zombied()) then
+        s_hit.power = 0
+        return 
+    end
+
+    if (s_hit.draftsman and is_controller(s_hit.draftsman)) then
+        vibrate_for(0.6, 1200)
+    end
 end
 
 local function actor_on_update()
@@ -399,9 +428,10 @@ function on_game_start()
     -- Callbacks for everything else
     RegisterScriptCallback("actor_on_update", actor_on_update)
 	RegisterScriptCallback("actor_on_hit_callback", actor_on_hit_callback)
+    RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit)
     RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
-    RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
+    -- RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
     RegisterScriptCallback("actor_on_land", actor_on_land)
     RegisterScriptCallback("on_before_surge", on_before_surge)
     RegisterScriptCallback("on_before_psi_storm", on_before_psi_storm)
