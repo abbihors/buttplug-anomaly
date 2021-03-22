@@ -291,6 +291,10 @@ local function actor_on_land(height)
     vibrate_for(power, 100)
 end
 
+local function actor_on_weapon_jammed(obj)
+    vibrate_for(0.4, 400)
+end
+
 local function set_vibration_from_bleed(bleeding)
     local new_level = base_vibration_level
 
@@ -424,6 +428,7 @@ function on_game_start()
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
     -- RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
     RegisterScriptCallback("actor_on_land", actor_on_land)
+    RegisterScriptCallback("actor_on_weapon_jammed", actor_on_weapon_jammed)
     RegisterScriptCallback("on_before_surge", on_before_surge)
     RegisterScriptCallback("on_before_psi_storm", on_before_psi_storm)
     RegisterScriptCallback("main_menu_on_init", main_menu_on_init)
