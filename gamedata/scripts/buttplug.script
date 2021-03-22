@@ -26,35 +26,6 @@ local pattern_stop_time = 0
 local base_vibration_level = 0.0
 local current_vibration_level = 0.0
 
--- Misc vars
-local prev_health = 1
-local prev_bleeding = 0
-
--- Bone names for determining which body part got hit
-local bone_names = {
-    [19] = "head",
-    [17] = "head",
-    [16] = "head",
-    [15] = "head",
-    [14] = "head",
-    [13] = "torso",
-    [12] = "torso",
-    [11] = "torso",
-    [2] = "torso",
-    [20] = "leftarm",
-    [21] = "leftarm",
-    [22] = "leftarm",
-    [23] = "leftarm",
-    [33] = "rightarm",
-    [34] = "rightarm",
-    [35] = "rightarm",
-    [36] = "rightarm",
-    [3] = "leftleg",
-    [4] = "leftleg",
-    [7] = "rightleg",
-    [8] = "rightleg"
-}
-
 -- Caliber based vibration strength
 local ammo_power = {
     ["7.62x25"] = 0.3, -- tokarev
@@ -247,38 +218,6 @@ local function actor_item_to_slot(obj)
     end
 end
 
-local dying = false
-local die_time = 0
-
--- TODO: Fix this breaks controller death and also doesn't work lol
--- This is also here so that when the actor dies, it doesn't just buzz forever
-local function actor_on_before_death(whoID, flags)
-    flags.ret_value = false
-
-    if not dying then
-        dying = true
-        die_time = time_global() + 500
-        stop_vibrate()
-    end
-
-    buttplug.get_and_handle_message()
-
-    if time_global() > die_time then
-        db.actor:kill(db.actor, true)
-    end
-end
-
--- TODO: These are bugged and somehow persist after Lua is destroyed
-local function on_before_surge(t)
-    -- printf("surge trigger")
-    -- vibrate_for(0.1, 7000)
-end
-
-local function on_before_psi_storm(t)
-    -- printf("psi storm trigger")
-    -- vibrate_for(0.1, 7000)
-end
-
 local function actor_on_land(height)
     -- 3-4 jumping up to something
     -- 6-7 jumping in place
@@ -299,11 +238,10 @@ local function set_vibration_from_bleed(bleeding)
     local new_level = base_vibration_level
 
     if bleeding == 0 then new_level = 0.0
-    elseif bleeding > 0.95 then new_level = 0.4
-    elseif bleeding > 0.90 then new_level = 0.3
-    elseif bleeding > 0.80 then new_level = 0.2
-    elseif bleeding > 0.60 then new_level = 0.1
-    elseif bleeding > 0.00 then new_level = 0.05
+    elseif bleeding < 0.15 then new_level = 0.0
+    elseif bleeding < 0.75 then new_level = 0.1
+    elseif bleeding < 0.90 then new_level = 0.2
+    elseif bleeding < 0.95 then new_level = 0.3
     end
 
     if new_level ~= base_vibration_level then
@@ -311,7 +249,7 @@ local function set_vibration_from_bleed(bleeding)
         set_base_vibration_level(new_level)
     end
 
-    -- printf("bleeding: %s", bleeding)
+    printf("bleeding: %s", bleeding)
 end
 
 local function is_actor_zombied()
@@ -426,11 +364,8 @@ function on_game_start()
     RegisterScriptCallback("actor_on_before_hit", actor_on_before_hit)
     RegisterScriptCallback("actor_on_weapon_fired", actor_on_weapon_fired)
     RegisterScriptCallback("actor_item_to_slot", actor_item_to_slot)
-    -- RegisterScriptCallback("actor_on_before_death", actor_on_before_death)
     RegisterScriptCallback("actor_on_land", actor_on_land)
     RegisterScriptCallback("actor_on_weapon_jammed", actor_on_weapon_jammed)
-    RegisterScriptCallback("on_before_surge", on_before_surge)
-    RegisterScriptCallback("on_before_psi_storm", on_before_psi_storm)
     RegisterScriptCallback("main_menu_on_init", main_menu_on_init)
     RegisterScriptCallback("main_menu_on_quit", main_menu_on_quit)
 end

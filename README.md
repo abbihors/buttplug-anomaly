@@ -22,7 +22,11 @@ Adds buttplug support to STALKER: Anomaly.
 
 ## Known Issues
 
-If you are using the **Lovense USB Bluetooth Adapter** (which is generally *not* recommended because of all the problems it has), the game won't be able to find your toy if it takes more than 30 seconds to find. If this happens, just reload your save and make sure the device is on so that it can be discovered right away.
+- If you are using the **Lovense USB Bluetooth Adapter** (which is generally *not* recommended because of all the problems it has), the game won't be able to find your toy if it takes more than 30 seconds to find. If this happens, just reload your save and make sure the device is on so that it can be discovered right away.
+
+- Vibration gets stuck on death, just press ESC.
+
+- No customization, this may be added in a new version.
 
 ## Frequently Asked Questions
 
