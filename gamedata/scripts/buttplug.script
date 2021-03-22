@@ -27,7 +27,6 @@ local base_vibration_level = 0.0
 local current_vibration_level = 0.0
 
 -- Misc vars
-local buttplug_scanning = false
 local prev_health = 1
 local prev_bleeding = 0
 
@@ -166,11 +165,6 @@ local gas_masks = {
     ["svoboda_exolight_outfit"] = true
 }
 
-function start_buttplug()
-    buttplug.connect("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
-    printf("[buttplug] started")
-end
-
 local function scale_power(power)
     return math.min(max_vibration_power, power * vibrate_factor)
 end
@@ -179,10 +173,7 @@ end
 -- vibration factor that is applied to all vibrate commands, as well as
 -- a hard cap on vibration power.
 local function scaled_vibrate(power)
-    -- Don't do anything if we don't have a device
-    if not buttplug.has_devices() then
-        return
-    end
+    if buttplug.count_devices() == 0 then return end
 
     current_vibration_level = power
 
@@ -198,9 +189,7 @@ local function scaled_vibrate(power)
 end
 
 local function set_base_vibration_level(power)
-    if not buttplug.has_devices() then
-        return
-    end
+    if buttplug.count_devices() == 0 then return end
 
     -- Only send a vibrate command if nothing else is vibrating
     if not vibrating then
@@ -211,10 +200,9 @@ local function set_base_vibration_level(power)
 end
 
 local function stop_vibrate()
-    -- Don't do anything if we don't have a device
-    if buttplug.has_devices() then
-        buttplug.send_vibrate_cmd(0, { 0 })
-    end
+    if buttplug.count_devices() == 0 then return end
+
+    buttplug.send_vibrate_cmd(0, { 0 })
 end
 
 local function pattern_vibrate(power, on_time, off_time)
@@ -310,7 +298,7 @@ local function set_vibration_from_bleed(bleeding)
     elseif bleeding > 0.95 then new_level = 0.4
     elseif bleeding > 0.90 then new_level = 0.3
     elseif bleeding > 0.80 then new_level = 0.2
-    elseif bleeding > 0.40 then new_level = 0.1
+    elseif bleeding > 0.60 then new_level = 0.1
     elseif bleeding > 0.00 then new_level = 0.05
     end
 
@@ -365,22 +353,32 @@ local function main_menu_on_quit()
     scaled_vibrate(current_vibration_level)
 end
 
--- Get a device from the Buttplug server
-local function get_device()
-    -- Not connected yet
-    if not buttplug.got_server_info then
-        return
-    end
-
-    -- Try the device list first
-    if not buttplug.got_device_list then
-        buttplug.request_device_list()
-    elseif not buttplug_scanning then
-        -- If device list was empty, start scanning
-        buttplug.start_scanning()
-        buttplug_scanning = true
-    end
+function start_buttplug()
+    buttplug.connect("B.U.T.T.P.L.U.G.", "ws://127.0.0.1:12345")
+    printf("[buttplug] started")
 end
+
+table.insert(buttplug.callbacks.ServerInfo, function()
+    -- Ask for device list when connected
+    buttplug.request_device_list()
+end)
+
+table.insert(buttplug.callbacks.DeviceList, function()
+    -- If server doesn't know about devices, start scanning
+    if buttplug.count_devices() == 0 then
+        buttplug.start_scanning()
+    end
+end)
+
+table.insert(buttplug.callbacks.DeviceAdded, function()
+    -- Stop scanning after first device is found
+    buttplug.stop_scanning()
+end)
+
+table.insert(buttplug.callbacks.DeviceRemoved, function()
+    -- Start scanning if we lose a device
+    buttplug.start_scanning()
+end)
 
 function update_timers()
     -- Stop vibrating if its time to stop
@@ -408,13 +406,6 @@ function update_buttplug()
         printf("[buttplug] error: couldn't connect to buttplug server")
         printf("[buttplug] make sure the server is running, then reload your save")
         return
-    end
-
-    if buttplug_scanning and buttplug.has_devices() then
-        buttplug.stop_scanning()
-        buttplug_scanning = false
-    elseif not buttplug.has_devices() then    
-        get_device()
     end
 
     prev_update = time_global()

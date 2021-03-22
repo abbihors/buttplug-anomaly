@@ -26,128 +26,141 @@
 local json = require("json")
 local pollnet = require("pollnet")
 
-local buttplug = {}
+local messages = {
 
---
--- Buttplug messages
---
+    -- Status messages
 
-local messages = {}
-
--- Status messages
-
-messages.Ok = {
     Ok = {
-        Id = 1
-    }
-}
+        Ok = {
+            Id = 1
+        }
+    },
 
-messages.Error = {
     Error = {
-        Id = 0,
-        ErrorMessage = "",
-        ErrorCode = 0
-    }
-}
+        Error = {
+            Id = 0,
+            ErrorMessage = "",
+            ErrorCode = 0
+        }
+    },
 
--- Handshake messages
+    -- Handshake messages
 
-messages.RequestServerInfo = {
     RequestServerInfo = {
-        Id = 1,
-        ClientName = "",
-        MessageVersion = 1
-    }
-}
+        RequestServerInfo = {
+            Id = 1,
+            ClientName = "",
+            MessageVersion = 1
+        }
+    },
 
-messages.ServerInfo = {
     ServerInfo = {
-        Id = 1,
-        ServerName = "",
-        MessageVersion = 1,
-        MaxPingTime = 0
-    }
-}
+        ServerInfo = {
+            Id = 1,
+            ServerName = "",
+            MessageVersion = 1,
+            MaxPingTime = 0
+        }
+    },
 
--- Enumeration messages
+    -- Enumeration messages
 
-messages.RequestDeviceList = {
     RequestDeviceList = {
-        Id = 1
-    }
-}
+        RequestDeviceList = {
+            Id = 1
+        }
+    },
 
-messages.DeviceList = {
     DeviceList = {
-        Id = 1,
-        Devices = {}
-    }
-}
+        DeviceList = {
+            Id = 1,
+            Devices = {}
+        }
+    },
 
-messages.StartScanning = {
     StartScanning = {
-        Id = 1
-    }
-}
+        StartScanning = {
+            Id = 1
+        }
+    },
 
-messages.StopScanning = {
     StopScanning = {
-        Id = 1
-    }
-}
+        StopScanning = {
+            Id = 1
+        }
+    },
 
-messages.DeviceAdded = {
+    ScanningFinished = {
+        ScanningFinished = {
+            Id = 0
+        }
+    },
+
     DeviceAdded = {
-        Id = 0,
-        DeviceName = "",
-        DeviceIndex = 0,
-        DeviceMessages = {}
-    }
-}
+        DeviceAdded = {
+            Id = 0,
+            DeviceName = "",
+            DeviceIndex = 0,
+            DeviceMessages = {}
+        }
+    },
 
-messages.DeviceRemoved = {
     DeviceRemoved = {
-        Id = 0,
-        DeviceIndex = 0
-    }
-}
+        DeviceRemoved = {
+            Id = 0,
+            DeviceIndex = 0
+        }
+    },
 
--- Generic device messages
+    -- Generic device messages
 
-messages.StopDeviceCmd = {
     StopDeviceCmd = {
-        Id = 1,
-        DeviceIndex = 0
-    }
-}
+        StopDeviceCmd = {
+            Id = 1,
+            DeviceIndex = 0
+        }
+    },
 
-messages.StopAllDevices = {
     StopAllDevices = {
-        Id = 1
-    }
-}
+        StopAllDevices = {
+            Id = 1
+        }
+    },
 
-messages.VibrateCmd = {
     VibrateCmd = {
-        Id = 1,
-        DeviceIndex = 0,
-        Speeds = {}
+        VibrateCmd = {
+            Id = 1,
+            DeviceIndex = 0,
+            Speeds = {}
+        }
     }
 }
 
 --
--- Global variables
+-- Client
 --
 
-buttplug.msg_counter = 1
-buttplug.devices = {}
-buttplug.got_server_info = false
-buttplug.got_device_list = false
-buttplug.print = print
+local buttplug = {
+    msg_counter = 1,
+    devices = {},
+    print = print, -- User can override this w/ game print function
+    -- Callbacks to run when receiving messages from the server
+    callbacks = {
+        Ok = {},
+        Error = {},
+        ServerInfo = {},
+        DeviceList = {},
+        DeviceAdded = {},
+        DeviceRemoved = {},
+        ScanningFinished = {}
+    }
+}
 
---
---
---
+local function run_callbacks(message_type)
+    for k, f in pairs(buttplug.callbacks[message_type]) do
+        f()
+    end
+end
 
 local function message_type(msg)
     -- Message type is the first field
@@ -218,10 +231,6 @@ function buttplug.count_devices()
     return table.getn(buttplug.devices)
 end
 
-function buttplug.has_devices()
-    return buttplug.count_devices() > 0
-end
-
 function buttplug.add_device(dev)
     local dev_count = table.getn(buttplug.devices)
         
@@ -246,11 +255,6 @@ function buttplug.handle_message(raw_message)
     local msg_type = message_type(msg)
     local msg_contents = msg[msg_type]
 
-    -- if ServerInfo, set flag
-    if (msg_type == "ServerInfo") then
-        buttplug.got_server_info = true
-    end
-
     -- if DeviceList, add any devices
     if (msg_type == "DeviceList") then
         local devices = msg_contents["Devices"]
@@ -258,8 +262,6 @@ function buttplug.handle_message(raw_message)
         for i, v in ipairs(devices) do
             buttplug.add_device(v)
         end
-
-        buttplug.got_device_list = true
     end
 
     -- if DeviceAdded, add the device
@@ -271,6 +273,9 @@ function buttplug.handle_message(raw_message)
     if (msg_type == "DeviceRemoved") then
         buttplug.remove_device(msg_contents["DeviceIndex"])
     end
+
+    -- Run callbacks for the message
+    run_callbacks(msg_type)
 end
 
 -- Gets and handles messages from the server. Returns the message when
