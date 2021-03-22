@@ -12,6 +12,15 @@ Adds buttplug support to STALKER: Anomaly.
 - Zero or close to zero impact on game performance
 - TODO: Multiple profiles
 
+### Current Triggers for Vibration
+
+- weapon fired (based on the caliber of your weapon)
+- taking damage
+- bleeding (but not very light bleeding)
+- equipping gas mask
+- weapon jammed
+- jumping (based on distance fallen)
+
 ## How Do I Use This?
 
 1. Install and launch [Intiface Desktop](https://intiface.com/desktop/) and click "Server Status". Make sure "Regular Websockets" is checked (*not* secure), then click "Start Server"
