@@ -5,12 +5,12 @@ Adds buttplug support to STALKER: Anomaly.
 ## Features
 
 - Buzzes your vibrator based on in-game events in STALKER: Anomaly
-    - e.g. firing your gun, doing damage, *receiving damage*, during blowouts
+    - e.g. firing your gun (based on caliber used), equipping certain items, *receiving damage*
 - Works with any toy supported by [buttplug.io](https://buttplug.io/) (check [here](https://iostindex.com/?filtersChanged=1&filter0Availability=Available,DIY) to see if your toy is supported)
 - Devices are automatically discovered and reconnected in case of a disconnect
-- TODO: Multiple profiles
 - Shouldn't have any compatibility problems with other addons
-- No impact on game performance
+- Zero or close to zero impact on game performance
+- TODO: Multiple profiles
 
 ## How Do I Use This?
 
@@ -18,15 +18,15 @@ Adds buttplug support to STALKER: Anomaly.
 2. Install [STALKER: Anomaly](https://www.moddb.com/mods/stalker-anomaly) and copy the `bin` and `gamedata` folders from this folder to your game folder
 3. Launch the game and load up a save or start a new game
 4. Turn on your device, it should automatically be detected
-5. Your toy will do a small vibration to let you know that it's connected to the game, but you can also check the console by pressing \` (tilde) and making sure it says "`[buttplug] found device`"
+5. If you want to confirm that your device was found, you can check the console by pressing \` (tilde) and making sure it says "`[buttplug] found device`"
 
 ## Known Issues
 
-- If you are using the **Lovense USB Bluetooth Adapter** (which is generally *not* recommended because of all the problems it has), the game won't be able to find your toy if it takes more than 30 seconds to find. If this happens, just reload your save and make sure the device is on so that it can be discovered right away.
+- If you are using the **Lovense USB Bluetooth Adapter** (not recommended), the game won't be able to find your toy if it takes more than 30 seconds to find. If this happens, just reload your save and make sure the device is on so that it can be discovered right away.
 
 - Vibration gets stuck on death, just press ESC.
 
-- No customization, this may be added in a new version.
+- No customization, this may be added in a future version.
 
 ## Frequently Asked Questions
 

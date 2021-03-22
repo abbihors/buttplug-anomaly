@@ -7,7 +7,7 @@ buttplug = require("buttplug")
 
 -- Set buttplug's print function to xray's printf
 buttplug.print = function (arg)
-    return printf("[buttplug] " .. arg)
+    -- return printf("[buttplug] " .. arg)
 end
 
 -- Safety variables
@@ -192,8 +192,7 @@ local function vibrate_for(power, on_time)
 end
 
 local function actor_on_hit_callback(obj, amount, local_direction, who, bone_id)
-    -- printf("[buttplug] got hit for %s in %s", amount, bone_name)
-    local bone_name = bone_names[bone_id]
+    -- printf("[buttplug] got hit for %s", amount)
 
     vibrate_for(amount, 500)
 end
@@ -238,10 +237,11 @@ local function set_vibration_from_bleed(bleeding)
     local new_level = base_vibration_level
 
     if bleeding == 0 then new_level = 0.0
-    elseif bleeding < 0.15 then new_level = 0.0
-    elseif bleeding < 0.75 then new_level = 0.1
-    elseif bleeding < 0.90 then new_level = 0.2
-    elseif bleeding < 0.95 then new_level = 0.3
+    elseif bleeding > 0.95 then new_level = 0.30
+    elseif bleeding > 0.90 then new_level = 0.20
+    elseif bleeding > 0.75 then new_level = 0.10
+    elseif bleeding > 0.20 then new_level = 0.05
+    else new_level = 0.00
     end
 
     if new_level ~= base_vibration_level then
@@ -249,7 +249,7 @@ local function set_vibration_from_bleed(bleeding)
         set_base_vibration_level(new_level)
     end
 
-    printf("bleeding: %s", bleeding)
+    -- printf("bleeding: %s", bleeding)
 end
 
 local function is_actor_zombied()
@@ -300,6 +300,11 @@ function start_buttplug()
     printf("[buttplug] started")
 end
 
+local function confirm_device_found()
+    printf("[buttplug] found device")
+    -- vibrate_for(0.1, 200)
+end
+
 table.insert(buttplug.callbacks.ServerInfo, function()
     -- Ask for device list when connected
     buttplug.request_device_list()
@@ -309,17 +314,21 @@ table.insert(buttplug.callbacks.DeviceList, function()
     -- If server doesn't know about devices, start scanning
     if buttplug.count_devices() == 0 then
         buttplug.start_scanning()
+    else
+        confirm_device_found()
     end
 end)
 
 table.insert(buttplug.callbacks.DeviceAdded, function()
     -- Stop scanning after first device is found
     buttplug.stop_scanning()
+    confirm_device_found()
 end)
 
 table.insert(buttplug.callbacks.DeviceRemoved, function()
     -- Start scanning if we lose a device
     buttplug.start_scanning()
+    printf("[buttplug] lost device, starting scan")
 end)
 
 function update_timers()
