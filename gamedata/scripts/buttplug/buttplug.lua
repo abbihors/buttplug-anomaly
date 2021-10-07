@@ -287,7 +287,9 @@ function buttplug.get_and_handle_message()
         return message
     end
 
-    if message then
+    -- Intiface will send just a newline char if it has no messages, so
+    -- check for that
+    if message and string.len(message) > 1 then
         buttplug.print("< " .. message)
         buttplug.handle_message(message)
     end
